@@ -141,6 +141,7 @@ button:active {
 }
 
 #view {
+  cursor: crosshair;
   display: block;
   width: 100%;
   height: 100%;
@@ -258,11 +259,16 @@ button:active {
 
 .palette {
   display: flex;
-  align-items: center;
-  gap: 7px;
+  flex-direction: column;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  align-items: stretch;
+  gap: 6px;
+  max-height: 124px;
   overflow-x: auto;
-  padding-bottom: 2px;
-  scrollbar-width: none;
+  overflow-y: hidden;
+  padding: 2px 20px 6px 2px;
+  scrollbar-width: thin;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -272,24 +278,29 @@ button:active {
 
 .tool-btn {
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
-  gap: 7px;
-  height: 40px;
-  padding: 0 12px;
+  justify-content: center;
+  gap: 2px;
+  height: 52px;
+  min-width: 76px;
+  padding: 4px 8px;
   border-radius: 11px;
   background: rgba(255, 255, 255, 0.07);
   border: 1.5px solid rgba(255, 255, 255, 0.08);
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text);
   white-space: nowrap;
   flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .tool-btn.active {
-  background: rgba(56, 189, 248, 0.16);
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-glow);
+  background: linear-gradient(180deg, rgba(56, 189, 248, 0.38), rgba(56, 189, 248, 0.16));
+  border-color: #7dd3fc;
+  box-shadow: 0 0 0 2px var(--accent-glow), 0 4px 14px rgba(56, 189, 248, 0.28);
+  color: #fff;
 }
 
 .swatch {
@@ -380,5 +391,152 @@ button:active {
   }
   .brush-label {
     display: none;
+  }
+}
+
+.palette-wrap {
+  position: relative;
+}
+
+.palette-fade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 22px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.palette-fade-left {
+  left: 0;
+  background: linear-gradient(90deg, rgba(17, 22, 33, 0.95), transparent);
+  opacity: 0;
+}
+
+.palette-fade-right {
+  right: 0;
+  background: linear-gradient(270deg, rgba(17, 22, 33, 0.95), transparent);
+}
+
+.palette-wrap.can-left .palette-fade-left { opacity: 1; }
+.palette-wrap.can-right .palette-fade-right { opacity: 1; }
+
+.active-chip {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 8px;
+  border-radius: 999px;
+  background: rgba(8, 12, 20, 0.86);
+  border: 1.5px solid rgba(125, 211, 252, 0.55);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.16), 0 8px 24px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  z-index: 6;
+  backdrop-filter: blur(10px);
+  max-width: calc(100% - 24px);
+  pointer-events: none;
+}
+
+.active-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(56, 189, 248, 0.2);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.active-chip .swatch {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.active-chip.pulse {
+  animation: chip-pulse 0.45s ease;
+}
+
+@keyframes chip-pulse {
+  0% { box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.5), 0 8px 24px rgba(0, 0, 0, 0.35); transform: scale(1.04); }
+  100% { box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.16), 0 8px 24px rgba(0, 0, 0, 0.35); transform: scale(1); }
+}
+
+.toast {
+  top: 48px;
+}
+
+.dock {
+  background: rgba(14, 18, 28, 0.94);
+}
+
+@media (max-width: 700px) {
+  .palette {
+    flex-direction: column;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    max-height: 124px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 6px;
+    padding: 4px 20px 6px 2px;
+    scrollbar-width: thin;
+  }
+  .tool-btn {
+    flex-direction: column;
+    height: 48px;
+    min-width: 70px;
+    padding: 3px 8px;
+    font-size: 11px;
+    gap: 2px;
+    border-radius: 10px;
+    box-sizing: border-box;
+  }
+  .tool-emoji { font-size: 16px; }
+  .swatch { width: 14px; height: 14px; }
+  .active-chip {
+    font-size: 12px;
+    padding: 5px 10px 5px 7px;
+    top: 8px;
+    left: 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .dock-top {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .cat-tabs {
+    flex: 1 1 100%;
+    width: 100%;
+    min-width: 0;
+  }
+  .cat-tab {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+  .brush-wrap {
+    margin-left: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .palette {
+    padding: 2px 10px 6px 2px;
+    gap: 5px;
+  }
+  .tool-btn {
+    min-width: 62px;
+    height: 48px;
+    font-size: 10px;
+    padding: 3px 4px;
   }
 }

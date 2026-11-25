@@ -6,8 +6,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>SandForge — Physics & Mob Sandbox</title>
-  <!-- SANDFORGE_V2_DISASTERS -->
-  <meta name="sandforge-build" content="SANDFORGE_V2_DISASTERS" />
+  <!-- SANDFORGE_V3_REVAMP -->
+  <meta name="sandforge-build" content="SANDFORGE_V3_REVAMP" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%230d111a'/%3E%3Ccircle cx='12' cy='12' r='5' fill='%23fb923c'/%3E%3Ccircle cx='20' cy='20' r='5' fill='%2338bdf8'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -30,6 +30,10 @@
 
     <main class="stage" id="stage">
       <canvas id="view"></canvas>
+      <div id="active-chip" class="active-chip" aria-live="polite">
+        <span id="active-icon" class="active-icon">🖐️</span>
+        <span id="active-name">Grab / Throw</span>
+      </div>
       <div id="toast" class="toast hidden"></div>
     </main>
 
@@ -51,7 +55,11 @@
         </div>
       </div>
 
-      <div class="palette" id="palette"></div>
+      <div class="palette-wrap" id="palette-wrap">
+        <div class="palette-fade palette-fade-left" aria-hidden="true"></div>
+        <div class="palette" id="palette"></div>
+        <div class="palette-fade palette-fade-right" aria-hidden="true"></div>
+      </div>
     </footer>
   </div>
 

@@ -103,6 +103,7 @@
       this.shake = 0;
       this.shakeX = 0;
       this.shakeY = 0;
+      this.glows = [];
 
       this.nextMobId = 1;
       this.grabbed = null;
@@ -144,6 +145,7 @@
       this.shake = 0;
       this.shakeX = 0;
       this.shakeY = 0;
+      this.glows.length = 0;
       this.grabbed = null;
     }
 
@@ -313,6 +315,11 @@
         walkPhase: this.rand() * Math.PI * 2,
         aiTimer: 20 + this.randInt(40),
         jumpCooldown: 10 + this.randInt(30),
+        attackCooldown: 8 + this.randInt(16),
+        attackTimer: 0,
+        attackStyle: '',
+        combatTimer: 0,
+        lastHitBy: '',
         onGround: false,
         inWater: false,
       };
@@ -642,6 +649,16 @@
     spawnEarthquake(duration = 58) {
       this.quakeLife = Math.max(this.quakeLife, duration);
       this.addShake(14);
+      for (let k = 0; k < 28; k++) {
+        this.spawnParticle({
+          x: this.rand() * this.width,
+          y: this.height * (0.45 + this.rand() * 0.5),
+          vx: (this.rand() - 0.5) * 2.2,
+          vy: -0.6 - this.rand() * 1.4,
+          gravity: 0.12, life: 22 + this.randInt(16), maxLife: 38,
+          color: this.rand() < 0.5 ? '#cbd5e1' : '#94a3b8', size: 2.2, redeposit: false,
+        });
+      }
       for (const mob of this.mobs) {
         if (mob.state === 'grabbed') continue;
         mob.state = 'ragdoll';
@@ -1974,6 +1991,10 @@
         }
 
         if (m.hp <= 0) {
+          if (this.isHuman(m) && m.lastHitBy === 'zombie') {
+            this.infectMob(m);
+            continue;
+          }
           const splatColors = { walker: '#60a5fa', jumper: '#a3e635', zombie: '#4ade80', dummy: '#fb923c' };
           this.spawnSplat(m.x, m.y - 6, splatColors[m.type] || '#f87171', 18, 3.0);
           if (this.grabbed && this.grabbed.ref === m) this.grabbed = null;
@@ -2069,18 +2090,105 @@
         if (Math.abs(m.vx) > 0.15) m.walkPhase += Math.abs(m.vx) * 0.45;
       }
 
-      for (let i = 0; i < this.mobs.length; i++) {
-        const z = this.mobs[i];
-        if (z.type !== 'zombie') continue;
-        for (let j = 0; j < this.mobs.length; j++) {
+      this.stepCombat();
+    }
+
+    isHuman(m) { return m.type === 'walker' || m.type === 'jumper'; }
+
+    infectMob(m) {
+      if (!this.isHuman(m)) return false;
+      m.type = 'zombie';
+      m.hp = 90;
+      m.maxHp = 130;
+      m.hurtFlash = 12;
+      m.combatTimer = 90;
+      m.attackCooldown = 22;
+      m.attackTimer = 0;
+      m.lastHitBy = '';
+      this.spawnSplat(m.x, m.y - 7, '#4ade80', 10, 1.8);
+      return true;
+    }
+
+    hitMob(attacker, victim, damage, style) {
+      if (!victim || victim.state === 'grabbed') return;
+      victim.hp -= damage;
+      victim.hurtFlash = 8;
+      victim.combatTimer = 90;
+      attacker.combatTimer = 90;
+      attacker.attackTimer = style === 'stomp' ? 14 : 10;
+      attacker.attackStyle = style;
+      const dir = victim.x >= attacker.x ? 1 : -1;
+      const kb = style === 'shove' ? 2.4 : (style === 'stomp' ? 1.2 : 1.5);
+      victim.vx += dir * kb;
+      victim.vy -= style === 'stomp' ? 0.4 : 0.9;
+      if (style === 'shove' || style === 'stomp') {
+        victim.state = 'ragdoll';
+        victim.ragdollTimer = Math.max(victim.ragdollTimer, style === 'stomp' ? 16 : 14);
+        victim.angVel += dir * 0.18;
+      }
+      if (attacker.type === 'zombie') victim.lastHitBy = 'zombie';
+      else if (this.isHuman(attacker)) victim.lastHitBy = 'human';
+      else victim.lastHitBy = 'env';
+
+      const col = attacker.type === 'zombie' ? '#86efac' : (style === 'stomp' ? '#fde68a' : '#fecaca');
+      this.spawnSplat((attacker.x + victim.x) * 0.5, (attacker.y + victim.y) * 0.5 - 7, col, 5, 1.5);
+    }
+
+    stepCombat() {
+      const mobs = this.mobs;
+      for (const m of mobs) {
+        if (m.attackCooldown > 0) m.attackCooldown--;
+        if (m.attackTimer > 0) m.attackTimer--;
+        if (m.combatTimer > 0) m.combatTimer--;
+      }
+      for (let i = 0; i < mobs.length; i++) {
+        const a = mobs[i];
+        if (a.state === 'grabbed' || a.state === 'ragdoll') continue;
+        if (a.burnTimer > 40 || a.shockTimer > 0) continue;
+        if (a.attackCooldown > 0) continue;
+        if (a.type === 'dummy') continue;
+
+        let target = null, best = 16 * 16;
+        for (let j = 0; j < mobs.length; j++) {
           if (i === j) continue;
-          const victim = this.mobs[j];
-          if (victim.type === 'zombie' || victim.type === 'dummy') continue;
-          if ((victim.x - z.x) ** 2 + (victim.y - z.y) ** 2 < 64) {
-            victim.type = 'zombie'; victim.hurtFlash = 8;
-            victim.hp = 120; victim.maxHp = 130;
-            this.spawnSplat(victim.x, victim.y - 7, '#4ade80', 8, 1.6);
+          const b = mobs[j];
+          if (b.state === 'grabbed') continue;
+          const opposed = (a.type === 'zombie' && this.isHuman(b)) || (this.isHuman(a) && b.type === 'zombie');
+          if (!opposed) continue;
+          const d2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2;
+          if (d2 < best) { best = d2; target = b; }
+        }
+        if (!target) continue;
+
+        const dist = Math.sqrt(best);
+        a.facing = target.x >= a.x ? 1 : -1;
+
+        // Jumper stomp: land on a zombie's head
+        if (a.type === 'jumper' && a.vy > 0.6 && target.y - a.y > 2 && Math.abs(a.x - target.x) < 10) {
+          this.hitMob(a, target, 34, 'stomp');
+          a.vy = -2.2;
+          a.attackCooldown = 20;
+          continue;
+        }
+
+        if (dist > 13) continue;
+
+        if (a.type === 'zombie') {
+          this.hitMob(a, target, 16, 'bite');
+          a.attackCooldown = 28;
+          // Chance to infect a badly wounded human before they fully drop
+          if (this.isHuman(target) && target.hp > 0 && target.hp / target.maxHp < 0.25 && this.rand() < 0.22) {
+            this.infectMob(target);
           }
+        } else if (a.type === 'jumper') {
+          const stomp = a.vy > 0.4 || !a.onGround;
+          this.hitMob(a, target, stomp ? 32 : 22, stomp ? 'stomp' : 'kick');
+          a.attackCooldown = 22;
+        } else {
+          // Walker punch or shove
+          const shove = this.rand() < 0.28;
+          this.hitMob(a, target, shove ? 14 : 22, shove ? 'shove' : 'punch');
+          a.attackCooldown = 20;
         }
       }
     }
@@ -2096,18 +2204,27 @@
         return;
       }
 
-      if (m.type === 'zombie') {
-        let target = null, bestD2 = 160 * 160;
+      // Hunt / fight-back: zombies chase humans, walkers & jumpers fight zombies
+      if (m.type === 'zombie' || this.isHuman(m)) {
+        let target = null, bestD2 = (m.type === 'zombie' ? 170 : 150) ** 2;
         for (const other of this.mobs) {
-          if (other.type === 'zombie' || other.type === 'dummy') continue;
+          if (other === m) continue;
+          const opposed = (m.type === 'zombie' && this.isHuman(other)) || (this.isHuman(m) && other.type === 'zombie');
+          if (!opposed) continue;
           const d2 = (other.x - m.x) ** 2 + (other.y - m.y) ** 2;
           if (d2 < bestD2) { bestD2 = d2; target = other; }
         }
         if (target) {
           m.facing = target.x >= m.x ? 1 : -1;
-          m.vx += m.facing * 0.14;
-          m.vx = Math.max(-1.05, Math.min(1.05, m.vx));
-          if (m.onGround && target.y < m.y - 10 && m.jumpCooldown <= 0) { m.vy = -2.6; m.jumpCooldown = 28; }
+          const dist = Math.sqrt(bestD2);
+          const cap = m.type === 'jumper' ? 1.45 : (m.type === 'zombie' ? 1.05 : 1.15);
+          const accel = dist > 13 ? 0.18 : 0.05;
+          m.vx += m.facing * accel;
+          m.vx = Math.max(-cap, Math.min(cap, m.vx));
+          if (m.onGround && m.jumpCooldown <= 0) {
+            if (target.y < m.y - 10) { m.vy = m.type === 'jumper' ? -3.2 : -2.4; m.jumpCooldown = 24; }
+            else if (m.type === 'jumper' && dist < 28 && dist > 12) { m.vy = -3.4; m.jumpCooldown = 20; }
+          }
           return;
         }
       }
@@ -2139,10 +2256,18 @@
     }
 
     renderPixels() {
-      const size = this.size, W = this.width, type = this.type, life = this.life, variant = this.variant, pixels = this.pixels, tick = this.tick;
+      const size = this.size, W = this.width, H = this.height, type = this.type, life = this.life, variant = this.variant, pixels = this.pixels, tick = this.tick;
+      const glows = this.glows;
+      glows.length = 0;
       for (let i = 0; i < size; i++) {
         const t = type[i];
-        if (t === EL.EMPTY) { pixels[i] = BG_COLOR; continue; }
+        if (t === EL.EMPTY) {
+          const y = (i / W) | 0;
+          const ny = y / H;
+          const grain = ((i * 13) ^ (y * 7)) & 7;
+          pixels[i] = packColor((11 + ny * 6 + (grain > 5 ? 3 : 0)) | 0, (15 + ny * 2 + (grain & 1)) | 0, (30 - ny * 9 + (grain & 3)) | 0);
+          continue;
+        }
         const v = variant[i], vOff = (v & 31) - 16;
 
         switch (t) {
@@ -2219,6 +2344,11 @@
             pixels[i] = packColor((BG_R + (135 - BG_R) * a) | 0, (BG_G + (255 - BG_G) * a) | 0, (BG_B + (95 - BG_B) * a) | 0);
             break;
           }
+        }
+
+        // Sparse glow samples for fire/lava/sparks (bloom drawn in the view)
+        if (glows.length < 280 && (t === EL.FIRE || t === EL.LAVA || t === EL.SPARK || t === EL.EMBER) && (((i + tick) & 3) === 0)) {
+          glows.push(i);
         }
       }
     }
