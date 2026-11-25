@@ -2,6 +2,7 @@
   'use strict';
 
   const { SandEngine, EL, EL_META } = window.SandForge;
+  window.SANDFORGE_BUILD = 'SANDFORGE_V2_DISASTERS';
 
   const TOOLS = {
     tools: [
@@ -11,8 +12,14 @@
       { id: 'bomb',     name: 'Bomb',         emoji: '💣', kind: 'tool', hint: 'Tap to drop or drag to throw a lit fuse bomb' },
       { id: 'firework', name: 'Firework',     emoji: '🎆', kind: 'tool', hint: 'Tap to launch a colorful firework rocket' },
       { id: 'tornado',  name: 'Tornado',      emoji: '🌪️', kind: 'tool', hint: 'Hold & drag to steer a tornado that flings everything' },
-      { id: 'tsunami',  name: 'Tsunami',      emoji: '🌊', kind: 'tool', hint: 'Tap left or right side to unleash a giant tidal wave' },
-      { id: 'eraser',   name: 'Eraser',       emoji: '🧹', kind: 'element', el: EL.EMPTY, hint: 'Erase cells, mobs, and bombs' },
+      { id: 'tsunami',      name: 'Tsunami',       emoji: '🌊', kind: 'tool', hint: 'Tap left or right side to unleash a giant tidal wave' },
+      { id: 'meteor',       name: 'Meteor',        emoji: '☄️', kind: 'tool', hint: 'Tap a target — a meteor falls from the sky, craters terrain, and splashes lava' },
+      { id: 'lightning',    name: 'Lightning',     emoji: '⚡', kind: 'tool', hint: 'Tap to drop a bolt that ignites fuel, electrifies water & metal, and zaps mobs' },
+      { id: 'blackhole',    name: 'Black Hole',    emoji: '🕳️', kind: 'tool', hint: 'Tap (or hold & drag) a vortex that sucks in matter and mobs, then collapses' },
+      { id: 'nuke',         name: 'Nuke',          emoji: '☢️', kind: 'tool', hint: 'Tap for a huge blast, mushroom cloud, and shockwave — smoke still fades away' },
+      { id: 'earthquake',   name: 'Earthquake',    emoji: '🌍', kind: 'tool', hint: 'Shake the world, loosen solids, and knock every mob off its feet' },
+      { id: 'flamethrower', name: 'Flamethrower',  emoji: '🔥', kind: 'tool', hint: 'Drag to spray a cone of fire and embers' },
+      { id: 'eraser',       name: 'Eraser',        emoji: '🧹', kind: 'element', el: EL.EMPTY, hint: 'Erase cells, mobs, and bombs' },
     ],
     mobs: [
       { id: 'mob_walker', name: 'Walker',      emoji: '🏃', kind: 'mob', mobType: 'walker', hint: 'Tap to spawn stick dudes that walk, climb & swim' },
@@ -440,6 +447,8 @@
   let aimStart = null;
   let aimCurrent = null;
   let activeTornado = null;
+  let activeBlackHole = null;
+  let flameDir = { x: 0, y: -1 };
   let panLast = null;
   let pinchLast = null;
   let minigunTick = 0;
@@ -467,6 +476,7 @@
     if (activePointers.size === 2) {
       if (gestureMode === 'grab') engine.endGrab();
       if (activeTornado) { activeTornado.controlled = false; activeTornado = null; }
+      if (activeBlackHole) { activeBlackHole.controlled = false; activeBlackHole = null; }
       gestureMode = 'panzoom';
       const [p1, p2] = getTwoPointers();
       pinchLast = {
@@ -522,6 +532,27 @@
     } else if (currentTool.id === 'tsunami') {
       gestureMode = 'tsunami';
       engine.spawnTsunami(pt.gx < engine.width * 0.5);
+    } else if (currentTool.id === 'meteor') {
+      gestureMode = 'meteor';
+      engine.spawnMeteor(pt.gx, pt.gy);
+    } else if (currentTool.id === 'lightning') {
+      gestureMode = 'lightning';
+      engine.spawnLightning(pt.gx, pt.gy);
+    } else if (currentTool.id === 'blackhole') {
+      gestureMode = 'blackhole';
+      activeBlackHole = engine.spawnBlackHole(pt.gx, pt.gy, 95);
+      activeBlackHole.controlled = true;
+    } else if (currentTool.id === 'nuke') {
+      gestureMode = 'nuke';
+      engine.spawnNuke(pt.gx, pt.gy);
+    } else if (currentTool.id === 'earthquake') {
+      gestureMode = 'earthquake';
+      engine.spawnEarthquake();
+    } else if (currentTool.id === 'flamethrower') {
+      gestureMode = 'flamethrower';
+      lastGridPt = pt;
+      flameDir = { x: 0, y: -1 };
+      engine.sprayFlamethrower(pt.gx, pt.gy, 0, -1);
     }
   });
 
@@ -580,6 +611,14 @@
     } else if (gestureMode === 'tornado' && activeTornado) {
       activeTornado.x = pt.gx;
       activeTornado.y = pt.gy;
+    } else if (gestureMode === 'blackhole' && activeBlackHole) {
+      activeBlackHole.x = pt.gx;
+      activeBlackHole.y = pt.gy;
+    } else if (gestureMode === 'flamethrower' && lastGridPt) {
+      const dx = pt.gx - lastGridPt.gx, dy = pt.gy - lastGridPt.gy;
+      if (dx * dx + dy * dy > 0.16) flameDir = { x: dx, y: dy };
+      engine.sprayFlamethrower(pt.gx, pt.gy, flameDir.x, flameDir.y);
+      lastGridPt = pt;
     }
   });
 
@@ -605,6 +644,11 @@
       activeTornado.controlled = false;
       activeTornado.life = 135;
       activeTornado = null;
+    }
+    if (gestureMode === 'blackhole' && activeBlackHole) {
+      activeBlackHole.controlled = false;
+      activeBlackHole.life = Math.min(activeBlackHole.life, 70);
+      activeBlackHole = null;
     }
 
     if (activePointers.size === 0) {
@@ -775,6 +819,7 @@
     const { scale, offX, offY } = getBaseTransform();
     ctx.translate(offX, offY);
     ctx.scale(scale, scale);
+    ctx.translate(engine.shakeX || 0, engine.shakeY || 0);
 
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(offCanvas, 0, 0);
@@ -803,6 +848,89 @@
         ctx.ellipse(tor.x + wobble, tor.y - h, rx, 2.5, 0, 0, Math.PI * 2);
         ctx.stroke();
       }
+    }
+
+    // Draw Meteors
+    for (const m of engine.meteors) {
+      ctx.save();
+      ctx.translate(m.x, m.y);
+      const trail = ctx.createRadialGradient(0, 0, 1, 0, 0, 9);
+      trail.addColorStop(0, 'rgba(255, 240, 180, 0.95)');
+      trail.addColorStop(0.4, 'rgba(255, 110, 30, 0.7)');
+      trail.addColorStop(1, 'rgba(255, 80, 20, 0)');
+      ctx.fillStyle = trail;
+      ctx.beginPath();
+      ctx.arc(0, 0, 9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#7c4a1a';
+      ctx.beginPath();
+      ctx.arc(0, 0, 4.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Draw Lightning bolts
+    for (const bolt of engine.lightnings) {
+      const a = Math.max(0, bolt.life / bolt.maxLife);
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      const stroke = (pts, width, color) => {
+        if (!pts || pts.length < 2) return;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+        ctx.stroke();
+      };
+      stroke(bolt.pts, 5.5, `rgba(165, 243, 252, ${0.28 * a})`);
+      stroke(bolt.pts, 2.0, `rgba(255, 255, 255, ${0.95 * a})`);
+      for (const fork of bolt.forks) {
+        stroke(fork, 3.5, `rgba(165, 243, 252, ${0.22 * a})`);
+        stroke(fork, 1.4, `rgba(255, 255, 255, ${0.85 * a})`);
+      }
+      ctx.restore();
+    }
+
+    // Draw Black Holes
+    for (const bh of engine.blackHoles) {
+      const fade = Math.min(1, bh.life / 18);
+      const r = Math.max(1, bh.radius);
+      ctx.save();
+      ctx.translate(bh.x, bh.y);
+      const halo = ctx.createRadialGradient(0, 0, r * 0.25, 0, 0, r * 1.25);
+      halo.addColorStop(0, 'rgba(10, 6, 18, 0.95)');
+      halo.addColorStop(0.55, `rgba(76, 29, 149, ${0.45 * fade})`);
+      halo.addColorStop(1, 'rgba(15, 10, 25, 0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 1.25, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#05030a';
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.42, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = `rgba(196, 181, 253, ${0.7 * fade})`;
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, r * 0.95, r * 0.28, bh.phase * 0.25, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Draw Nuke mushroom overlay (smoke cells underneath already dissipate)
+    for (const n of engine.nukes) {
+      const a = Math.max(0, n.life / n.maxLife);
+      const capY = n.y - n.stemH * (0.75 + (1 - a) * 0.2);
+      ctx.save();
+      ctx.fillStyle = `rgba(148, 163, 184, ${0.22 * a})`;
+      ctx.beginPath();
+      ctx.ellipse(n.x, capY, n.capR * (1.1 + (1 - a) * 0.4), n.capR * 0.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = `rgba(71, 85, 105, ${0.2 * a})`;
+      ctx.fillRect(n.x - 5, capY, 10, n.y - capY);
+      ctx.restore();
     }
 
     // Draw Ballistic Particles
@@ -925,6 +1053,9 @@
             engine.fireBullet(ox, oy, aimCurrent.gx, aimCurrent.gy);
           }
         }
+        if (gestureMode === 'flamethrower' && lastGridPt) {
+          engine.sprayFlamethrower(lastGridPt.gx, lastGridPt.gy, flameDir.x, flameDir.y);
+        }
         engine.step();
         acc -= 1;
         steps++;
@@ -953,6 +1084,6 @@
   populateScenes();
   renderPalette();
   SCENES[0].build();
-  showToast('SandForge ready — Grab mobs, drop bombs, or build!');
+  showToast('SandForge V2 — Meteor, Lightning, Black Hole, Nuke, Quake & Flamethrower!');
   requestAnimationFrame(loop);
 })();
