@@ -1,0 +1,1672 @@
+(function (root) {
+  'use strict';
+
+  const EL = {
+    EMPTY: 0,
+    SAND: 1,
+    SALT: 2,
+    GUNPOWDER: 3,
+    SEED: 4,
+    SNOW: 5,
+    ASH: 6,
+    WATER: 7,
+    SALTWATER: 8,
+    OIL: 9,
+    LAVA: 10,
+    ACID: 11,
+    STONE: 12,
+    WOOD: 13,
+    METAL: 14,
+    ICE: 15,
+    GLASS: 16,
+    PLANT: 17,
+    TNT: 18,
+    FIRE: 19,
+    SMOKE: 20,
+    STEAM: 21,
+    SPARK: 22,
+    EMBER: 23,
+    ACID_GAS: 24,
+  };
+
+  const EL_META = {
+    [EL.EMPTY]:     { name: 'Empty',     cat: 'hidden',  color: '#0d111a', density: 0,   state: 'empty' },
+    [EL.SAND]:      { name: 'Sand',      cat: 'solids',  color: '#e6c278', density: 55,  state: 'powder', desc: 'Falls in piles, melts into Glass near lava' },
+    [EL.SALT]:      { name: 'Salt',      cat: 'solids',  color: '#f3efe8', density: 54,  state: 'powder', desc: 'Dissolves in water into saltwater' },
+    [EL.GUNPOWDER]: { name: 'Gunpowder', cat: 'solids',  color: '#4c515c', density: 52,  state: 'powder', desc: 'Chain-reacts & explodes from fire or sparks' },
+    [EL.SEED]:      { name: 'Seed',      cat: 'solids',  color: '#9e844a', density: 50,  state: 'powder', desc: 'Sprouts into plants when watered' },
+    [EL.SNOW]:      { name: 'Snow',      cat: 'solids',  color: '#eef6ff', density: 42,  state: 'powder', desc: 'Drifts gently, melts into water' },
+    [EL.ASH]:       { name: 'Ash',       cat: 'hidden',  color: '#737882', density: 38,  state: 'powder', desc: 'Burnt residue; washes away in water' },
+    [EL.WATER]:     { name: 'Water',     cat: 'liquids', color: '#2b8cff', density: 25,  state: 'liquid', desc: 'Extinguishes fire, cools lava, waters plants' },
+    [EL.SALTWATER]: { name: 'Saltwater', cat: 'hidden',  color: '#34b5d9', density: 28,  state: 'liquid', desc: 'Conducts sparks, leaves salt when boiled' },
+    [EL.OIL]:       { name: 'Oil',       cat: 'liquids', color: '#8f5922', density: 15,  state: 'liquid', desc: 'Floats on water and burns fiercely' },
+    [EL.LAVA]:      { name: 'Lava',      cat: 'liquids', color: '#ff5114', density: 40,  state: 'liquid', desc: 'Melts sand & ice, turns to stone in water' },
+    [EL.ACID]:      { name: 'Acid',      cat: 'liquids', color: '#6eff3b', density: 27,  state: 'liquid', desc: 'Dissolves most solids (not Glass!)' },
+    [EL.STONE]:     { name: 'Stone',     cat: 'solids',  color: '#7e8490', density: 100, state: 'solid',  desc: 'Sturdy rock barrier' },
+    [EL.WOOD]:      { name: 'Wood',      cat: 'solids',  color: '#8c5a32', density: 100, state: 'solid',  desc: 'Flammable timber that burns to embers & ash' },
+    [EL.METAL]:     { name: 'Metal',     cat: 'solids',  color: '#9aa8b8', density: 100, state: 'solid',  desc: 'Blast-resistant & conducts electricity' },
+    [EL.ICE]:       { name: 'Ice',       cat: 'solids',  color: '#96e4ff', density: 100, state: 'solid',  desc: 'Melts near heat, chills nearby water' },
+    [EL.GLASS]:     { name: 'Glass',     cat: 'solids',  color: '#b8e2f8', density: 100, state: 'solid',  desc: 'Acid-proof, shatters in blasts & bullets' },
+    [EL.PLANT]:     { name: 'Plant',     cat: 'solids',  color: '#38b856', density: 100, state: 'solid',  desc: 'Grows with water, burns easily' },
+    [EL.TNT]:       { name: 'TNT',       cat: 'solids',  color: '#e6392f', density: 100, state: 'solid',  desc: 'Detonates with a shockwave that flings mobs' },
+    [EL.FIRE]:      { name: 'Fire',      cat: 'energy',  color: '#ff961c', density: 1,   state: 'gas',    desc: 'Burns flammables & fades out' },
+    [EL.SMOKE]:     { name: 'Smoke',     cat: 'energy',  color: '#6b707d', density: 1,   state: 'gas',    desc: 'Rises, swirls, and dissipates' },
+    [EL.STEAM]:     { name: 'Steam',     cat: 'energy',  color: '#cfe8ff', density: 1,   state: 'gas',    desc: 'Condenses back to water or dissipates' },
+    [EL.SPARK]:     { name: 'Spark',     cat: 'energy',  color: '#5ef2ff', density: 1,   state: 'gas',    desc: 'Travels through metal & ignites fuel' },
+    [EL.EMBER]:     { name: 'Ember',     cat: 'hidden',  color: '#ff6d1f', density: 2,   state: 'gas',    desc: 'Hot drifting coal that fades away' },
+    [EL.ACID_GAS]:  { name: 'Acid Vapor',cat: 'hidden',  color: '#88ff5e', density: 1,   state: 'gas',    desc: 'Fizzing acid fume that dissipates' },
+  };
+
+  function isSolid(t) { return t >= EL.STONE && t <= EL.TNT; }
+  function isPowder(t) { return t >= EL.SAND && t <= EL.ASH; }
+  function isLiquid(t) { return t >= EL.WATER && t <= EL.ACID; }
+  function isTransient(t) { return t >= EL.FIRE && t <= EL.ACID_GAS; }
+  function isBlocking(t) { return (t >= EL.SAND && t <= EL.ASH) || (t >= EL.STONE && t <= EL.TNT); }
+
+  function packColor(r, g, b, a = 255) {
+    return ((a & 255) << 24) | ((b & 255) << 16) | ((g & 255) << 8) | (r & 255);
+  }
+
+  const BG_R = 13, BG_G = 17, BG_B = 26;
+  const BG_COLOR = packColor(BG_R, BG_G, BG_B, 255);
+
+  class SandEngine {
+    constructor(width = 360, height = 240) {
+      this.width = width;
+      this.height = height;
+      this.size = width * height;
+      this.type = new Uint8Array(this.size);
+      this.life = new Uint16Array(this.size);
+      this.variant = new Uint8Array(this.size);
+      this.updated = new Uint8Array(this.size);
+      this.pixels = new Uint32Array(this.size);
+      this.pixels.fill(BG_COLOR);
+
+      this.tick = 0;
+      this.stamp = 1;
+      this.rngState = 0x9e3779b9;
+
+      this.particles = [];
+      this.bombs = [];
+      this.fireworks = [];
+      this.bullets = [];
+      this.rockets = [];
+      this.tornadoes = [];
+      this.tsunamis = [];
+      this.mobs = [];
+      this.flashes = [];
+
+      this.nextMobId = 1;
+      this.grabbed = null;
+      this.maxParticles = 2400;
+      this.maxMobs = 65;
+    }
+
+    rand() {
+      let x = this.rngState;
+      x ^= x << 13;
+      x ^= x >>> 17;
+      x ^= x << 5;
+      this.rngState = x >>> 0;
+      return (this.rngState & 0xfffffff) / 0x10000000;
+    }
+
+    randInt(n) { return (this.rand() * n) | 0; }
+
+    clear() {
+      this.type.fill(EL.EMPTY);
+      this.life.fill(0);
+      this.variant.fill(0);
+      this.updated.fill(0);
+      this.pixels.fill(BG_COLOR);
+      this.particles.length = 0;
+      this.bombs.length = 0;
+      this.fireworks.length = 0;
+      this.bullets.length = 0;
+      this.rockets.length = 0;
+      this.tornadoes.length = 0;
+      this.tsunamis.length = 0;
+      this.mobs.length = 0;
+      this.flashes.length = 0;
+      this.grabbed = null;
+    }
+
+    inBounds(x, y) { return x >= 0 && x < this.width && y >= 0 && y < this.height; }
+
+    defaultLife(t) {
+      switch (t) {
+        case EL.WOOD: return 180;
+        case EL.PLANT: return 70;
+        case EL.ACID: return 95;
+        case EL.FIRE: return 18 + this.randInt(24);
+        case EL.SMOKE: return 50 + this.randInt(45);
+        case EL.STEAM: return 60 + this.randInt(50);
+        case EL.SPARK: return 10 + this.randInt(12);
+        case EL.EMBER: return 32 + this.randInt(34);
+        case EL.ACID_GAS: return 20 + this.randInt(20);
+        case EL.ASH: return 450 + this.randInt(250);
+        default: return 0;
+      }
+    }
+
+    setCell(x, y, t, customLife = -1) {
+      if (x < 0 || x >= this.width || y < 0 || y >= this.height) return;
+      const i = y * this.width + x;
+      this.type[i] = t;
+      this.life[i] = customLife >= 0 ? customLife : this.defaultLife(t);
+      this.variant[i] = this.randInt(256);
+      this.updated[i] = this.stamp;
+    }
+
+    swapCells(i1, i2) {
+      const t = this.type[i1], l = this.life[i1], v = this.variant[i1];
+      this.type[i1] = this.type[i2];
+      this.life[i1] = this.life[i2];
+      this.variant[i1] = this.variant[i2];
+      this.type[i2] = t;
+      this.life[i2] = l;
+      this.variant[i2] = v;
+      this.updated[i1] = this.stamp;
+      this.updated[i2] = this.stamp;
+    }
+
+    paintBrush(cx, cy, radius, elementType, overwrite = false) {
+      const r = Math.max(0, radius | 0);
+      const r2 = r * r;
+      const isLiquidOrPowder = isLiquid(elementType) || isPowder(elementType);
+
+      for (let dy = -r; dy <= r; dy++) {
+        const y = (cy + dy) | 0;
+        if (y < 0 || y >= this.height) continue;
+        for (let dx = -r; dx <= r; dx++) {
+          const x = (cx + dx) | 0;
+          if (x < 0 || x >= this.width) continue;
+          if (dx * dx + dy * dy > r2) continue;
+          if (r > 2 && isLiquidOrPowder && elementType !== EL.WATER && this.rand() < 0.25) continue;
+          if (isTransient(elementType) && r > 1 && this.rand() < 0.35) continue;
+
+          const i = y * this.width + x;
+          const cur = this.type[i];
+
+          if (elementType === EL.EMPTY) {
+            this.type[i] = EL.EMPTY;
+            this.life[i] = 0;
+            continue;
+          }
+
+          if (overwrite || cur === EL.EMPTY || isTransient(cur) || (isSolid(elementType) && !isSolid(cur)) || (isLiquid(cur) && isPowder(elementType))) {
+            this.setCell(x, y, elementType);
+          }
+        }
+      }
+
+      if (elementType === EL.EMPTY) {
+        const er = Math.max(4, r + 2);
+        const er2 = er * er;
+        for (let m = this.mobs.length - 1; m >= 0; m--) {
+          const mob = this.mobs[m];
+          const dx = mob.x - cx, dy = (mob.y - 6) - cy;
+          if (dx * dx + dy * dy <= er2) {
+            this.spawnSplat(mob.x, mob.y - 6, '#9fb0c8', 8);
+            this.mobs.splice(m, 1);
+          }
+        }
+        for (let b = this.bombs.length - 1; b >= 0; b--) {
+          const bomb = this.bombs[b];
+          const dx = bomb.x - cx, dy = bomb.y - cy;
+          if (dx * dx + dy * dy <= er2) this.bombs.splice(b, 1);
+        }
+      }
+    }
+
+    paintLine(x0, y0, x1, y1, radius, elementType, overwrite = false) {
+      const dx = x1 - x0, dy = y1 - y0;
+      const dist = Math.hypot(dx, dy);
+      const step = Math.max(1, Math.min(radius * 0.45, 3));
+      const steps = Math.max(1, Math.ceil(dist / step));
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps;
+        this.paintBrush(Math.round(x0 + dx * t), Math.round(y0 + dy * t), radius, elementType, overwrite);
+      }
+    }
+
+    spawnParticle(p) {
+      if (this.particles.length >= this.maxParticles) this.particles.shift();
+      this.particles.push(p);
+    }
+
+    spawnSplat(x, y, color, count = 12, speed = 2.6) {
+      for (let i = 0; i < count; i++) {
+        const ang = this.rand() * Math.PI * 2;
+        const spd = (0.3 + this.rand() * 0.9) * speed;
+        this.spawnParticle({
+          x, y,
+          vx: Math.cos(ang) * spd,
+          vy: Math.sin(ang) * spd - 1.0,
+          gravity: 0.12,
+          life: 18 + this.randInt(20),
+          maxLife: 38,
+          color,
+          size: 1 + (this.rand() < 0.35 ? 1 : 0),
+          redeposit: false,
+        });
+      }
+    }
+
+    spawnBomb(x, y, vx = 0, vy = 0) {
+      if (this.bombs.length > 40) this.bombs.shift();
+      this.bombs.push({ x, y, vx, vy, radius: 4, fuse: 115, grabbed: false, angle: 0 });
+    }
+
+    spawnFirework(x, y) {
+      if (this.fireworks.length > 30) this.fireworks.shift();
+      const palettes = ['#ff4d6d', '#38bdf8', '#facc15', '#4ade80', '#c084fc', '#fb923c'];
+      this.fireworks.push({
+        x, y,
+        vx: (this.rand() - 0.5) * 0.6,
+        vy: -3.2 - this.rand() * 1.1,
+        life: 36 + this.randInt(24),
+        color: palettes[this.randInt(palettes.length)],
+      });
+    }
+
+    spawnMob(type, x, y) {
+      if (this.mobs.length >= this.maxMobs) this.mobs.shift();
+      const clampedX = Math.max(6, Math.min(this.width - 7, x));
+      const clampedY = Math.max(14, Math.min(this.height - 4, y));
+      const hpMap = { walker: 100, jumper: 95, zombie: 130, dummy: 160 };
+      const mob = {
+        id: this.nextMobId++,
+        type,
+        x: clampedX,
+        y: clampedY,
+        vx: (this.rand() - 0.5) * 0.6,
+        vy: 0,
+        angle: 0,
+        angVel: 0,
+        facing: this.rand() < 0.5 ? 1 : -1,
+        hp: hpMap[type] || 100,
+        maxHp: hpMap[type] || 100,
+        state: 'walk',
+        ragdollTimer: 0,
+        burnTimer: 0,
+        drownTimer: 0,
+        acidTimer: 0,
+        shockTimer: 0,
+        hurtFlash: 0,
+        walkPhase: this.rand() * Math.PI * 2,
+        aiTimer: 20 + this.randInt(40),
+        jumpCooldown: 10 + this.randInt(30),
+        onGround: false,
+        inWater: false,
+      };
+      this.mobs.push(mob);
+      return mob;
+    }
+
+    fireBullet(originX, originY, targetX, targetY) {
+      const dx = targetX - originX, dy = targetY - originY;
+      const spread = (this.rand() - 0.5) * 0.14;
+      const ang = Math.atan2(dy, dx) + spread;
+      const speed = 7.5;
+      this.bullets.push({
+        x: originX, y: originY,
+        vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed,
+        life: 65,
+      });
+      this.spawnParticle({
+        x: originX, y: originY,
+        vx: -Math.cos(ang) * 0.7 + (this.rand() - 0.5) * 0.8,
+        vy: -1.4 - this.rand() * 0.8,
+        gravity: 0.14, life: 24, maxLife: 24, color: '#f5c542', size: 1.4, redeposit: false,
+      });
+      this.spawnParticle({
+        x: originX + Math.cos(ang) * 2, y: originY + Math.sin(ang) * 2,
+        vx: Math.cos(ang) * 1.2, vy: Math.sin(ang) * 1.2,
+        gravity: 0, life: 5, maxLife: 5, color: '#fff3a8', size: 3, redeposit: false,
+      });
+    }
+
+    fireRocket(originX, originY, targetX, targetY) {
+      const ang = Math.atan2(targetY - originY, targetX - originX);
+      const speed = 3.8;
+      this.rockets.push({
+        x: originX, y: originY,
+        vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed,
+        angle: ang, life: 160,
+      });
+    }
+
+    spawnTornado(x, y, life = 150) {
+      if (this.tornadoes.length > 5) this.tornadoes.shift();
+      const t = { x, y, vx: (this.rand() - 0.5) * 0.6, life, maxLife: life, phase: this.rand() * Math.PI * 2, controlled: false };
+      this.tornadoes.push(t);
+      return t;
+    }
+
+    spawnTsunami(fromLeft = true) {
+      if (this.tsunamis.length > 3) this.tsunamis.shift();
+      this.tsunamis.push({
+        x: fromLeft ? -10 : this.width + 10,
+        dir: fromLeft ? 1 : -1,
+        speed: 2.8,
+        waveWidth: 26,
+        waveHeight: Math.floor(this.height * 0.48),
+        life: Math.ceil((this.width + 40) / 2.8),
+      });
+    }
+
+    startGrab(gx, gy, radius = 16) {
+      let bestMob = null, bestD2 = radius * radius;
+      for (const mob of this.mobs) {
+        const d2 = (mob.x - gx) ** 2 + ((mob.y - 6) - gy) ** 2;
+        if (d2 < bestD2) { bestD2 = d2; bestMob = mob; }
+      }
+      if (bestMob) {
+        bestMob.state = 'grabbed';
+        bestMob.vx = 0; bestMob.vy = 0;
+        this.grabbed = { kind: 'mob', ref: bestMob, ox: bestMob.x - gx, oy: bestMob.y - gy, lastX: gx, lastY: gy, tvx: 0, tvy: 0 };
+        return true;
+      }
+
+      let bestBomb = null, bestB2 = radius * radius;
+      for (const bomb of this.bombs) {
+        const d2 = (bomb.x - gx) ** 2 + (bomb.y - gy) ** 2;
+        if (d2 < bestB2) { bestB2 = d2; bestBomb = bomb; }
+      }
+      if (bestBomb) {
+        bestBomb.grabbed = true;
+        this.grabbed = { kind: 'bomb', ref: bestBomb, ox: bestBomb.x - gx, oy: bestBomb.y - gy, lastX: gx, lastY: gy, tvx: 0, tvy: 0 };
+        return true;
+      }
+      return false;
+    }
+
+    moveGrab(gx, gy) {
+      if (!this.grabbed) return;
+      const g = this.grabbed;
+      const dvx = gx - g.lastX, dvy = gy - g.lastY;
+      g.tvx = g.tvx * 0.55 + dvx * 0.45;
+      g.tvy = g.tvy * 0.55 + dvy * 0.45;
+      g.lastX = gx; g.lastY = gy;
+
+      if (g.kind === 'mob') {
+        const m = g.ref;
+        m.x = Math.max(4, Math.min(this.width - 5, gx + g.ox));
+        m.y = Math.max(10, Math.min(this.height - 3, gy + g.oy));
+        m.vx = g.tvx; m.vy = g.tvy;
+        m.angVel = Math.max(-0.35, Math.min(0.35, -g.tvx * 0.04));
+      } else if (g.kind === 'bomb') {
+        const b = g.ref;
+        b.x = Math.max(4, Math.min(this.width - 5, gx + g.ox));
+        b.y = Math.max(4, Math.min(this.height - 5, gy + g.oy));
+        b.vx = g.tvx; b.vy = g.tvy;
+      }
+    }
+
+    scoopParticles(gx, gy, vx, vy, radius = 14) {
+      const r2 = radius * radius, cx = gx | 0, cy = gy | 0;
+      const speed = Math.hypot(vx, vy);
+      const boostX = Math.max(-5, Math.min(5, vx * 0.75 + (this.rand() - 0.5) * 1.2));
+      const boostY = Math.max(-6, Math.min(4, vy * 0.75 - 1.2));
+      let count = 0;
+      for (let dy = -radius; dy <= radius; dy++) {
+        const y = cy + dy;
+        if (y < 0 || y >= this.height) continue;
+        for (let dx = -radius; dx <= radius; dx++) {
+          const x = cx + dx;
+          if (x < 0 || x >= this.width || dx * dx + dy * dy > r2) continue;
+          const i = y * this.width + x, t = this.type[i];
+          if ((isPowder(t) || isLiquid(t)) && this.rand() < 0.25 && count < 45) {
+            this.type[i] = EL.EMPTY; this.life[i] = 0;
+            this.spawnParticle({
+              x, y,
+              vx: boostX + (this.rand() - 0.5) * (0.8 + speed * 0.2),
+              vy: boostY + (this.rand() - 0.5) * 0.8,
+              gravity: 0.14, life: 80, maxLife: 80, elType: t, color: EL_META[t].color, size: 1.5, redeposit: true,
+            });
+            count++;
+          }
+        }
+      }
+    }
+
+    endGrab() {
+      if (!this.grabbed) return;
+      const g = this.grabbed;
+      const throwVx = Math.max(-9, Math.min(9, g.tvx * 1.25));
+      const throwVy = Math.max(-9, Math.min(9, g.tvy * 1.25));
+      if (g.kind === 'mob') {
+        const m = g.ref;
+        m.vx = throwVx; m.vy = throwVy;
+        if (Math.hypot(throwVx, throwVy) > 1.8) {
+          m.state = 'ragdoll'; m.ragdollTimer = 45;
+          m.angVel = Math.max(-0.4, Math.min(0.4, throwVx * 0.08));
+        } else {
+          m.state = 'walk';
+        }
+      } else if (g.kind === 'bomb') {
+        const b = g.ref;
+        b.grabbed = false; b.vx = throwVx; b.vy = throwVy;
+      }
+      this.grabbed = null;
+    }
+
+    explode(cx, cy, radius = 16, power = 12) {
+      const r = radius | 0, r2 = r * r, innerR2 = (r * 0.55) * (r * 0.55);
+      this.flashes.push({ x: cx, y: cy, radius: 2, maxRadius: radius * 1.35, life: 10, maxLife: 10 });
+
+      for (let dy = -r; dy <= r; dy++) {
+        const y = (cy + dy) | 0;
+        if (y < 1 || y >= this.height - 1) continue;
+        for (let dx = -r; dx <= r; dx++) {
+          const x = (cx + dx) | 0;
+          if (x < 1 || x >= this.width - 1) continue;
+          const d2 = dx * dx + dy * dy;
+          if (d2 > r2) continue;
+
+          const i = y * this.width + x, t = this.type[i];
+          const dist = Math.sqrt(d2) || 1, nx = dx / dist, ny = dy / dist;
+
+          if (t === EL.TNT && (dx !== 0 || dy !== 0)) {
+            this.type[i] = EL.EMPTY; this.life[i] = 0;
+            if (this.rand() < 0.14) {
+              this.spawnBomb(x, y, nx * 2.5, ny * 2.5 - 1.5);
+              this.bombs[this.bombs.length - 1].fuse = 4 + this.randInt(8);
+            } else {
+              this.setCell(x, y, EL.FIRE, 24);
+            }
+            continue;
+          }
+
+          if (t === EL.METAL && d2 > innerR2 * 0.6) continue;
+          if (t === EL.STONE && d2 > innerR2 && this.rand() < 0.72) continue;
+
+          if (t !== EL.EMPTY && !isTransient(t)) {
+            if ((isPowder(t) || isLiquid(t) || t === EL.WOOD || t === EL.STONE) && this.rand() < 0.22) {
+              const flingType = t === EL.STONE ? EL.SAND : (t === EL.WOOD ? EL.EMBER : t);
+              const spd = (1 - dist / (r + 1)) * (power * 0.42) + this.rand() * 2.2;
+              this.spawnParticle({
+                x, y,
+                vx: nx * spd + (this.rand() - 0.5) * 1.4,
+                vy: ny * spd - 1.8 - this.rand() * 1.5,
+                gravity: 0.14, life: 75, maxLife: 75, elType: flingType,
+                color: EL_META[flingType].color, size: 1.5, redeposit: flingType !== EL.EMBER,
+              });
+            }
+            this.type[i] = EL.EMPTY; this.life[i] = 0;
+          }
+
+          if (d2 < innerR2) {
+            if (this.rand() < 0.55) this.setCell(x, y, EL.FIRE, 12 + this.randInt(18));
+            else if (this.rand() < 0.4) this.setCell(x, y, EL.SMOKE, 45 + this.randInt(40));
+          } else if (this.rand() < 0.25) {
+            this.setCell(x, y, EL.SMOKE, 40 + this.randInt(45));
+          }
+        }
+      }
+
+      const sparkCount = Math.min(36, r * 2);
+      for (let s = 0; s < sparkCount; s++) {
+        const ang = this.rand() * Math.PI * 2, spd = 1.6 + this.rand() * (power * 0.35);
+        this.spawnParticle({
+          x: cx, y: cy,
+          vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd - 1.2,
+          gravity: 0.1, life: 16 + this.randInt(18), maxLife: 34,
+          color: this.rand() < 0.5 ? '#ffe066' : '#ff6b2b', size: 1.6, redeposit: false,
+        });
+      }
+
+      const pushR = r * 2.2, pushR2 = pushR * pushR;
+      for (const mob of this.mobs) {
+        const dx = mob.x - cx, dy = (mob.y - 6) - cy, d2 = dx * dx + dy * dy;
+        if (d2 < pushR2) {
+          const dist = Math.sqrt(d2) || 1, falloff = 1 - dist / pushR, impulse = falloff * (power * 0.72);
+          mob.vx += (dx / dist) * impulse;
+          mob.vy += (dy / dist) * impulse - falloff * 3.5;
+          mob.state = 'ragdoll'; mob.ragdollTimer = Math.max(mob.ragdollTimer, 55);
+          mob.angVel += (dx >= 0 ? 1 : -1) * falloff * 0.45;
+          mob.hurtFlash = 10; mob.hp -= falloff * (power * 6.5);
+          if (falloff > 0.45 && this.rand() < 0.65) mob.burnTimer = Math.max(mob.burnTimer, 70);
+        }
+      }
+
+      for (const bomb of this.bombs) {
+        if (bomb.grabbed) continue;
+        const dx = bomb.x - cx, dy = bomb.y - cy, d2 = dx * dx + dy * dy;
+        if (d2 < pushR2 && d2 > 1) {
+          const dist = Math.sqrt(d2), falloff = 1 - dist / pushR;
+          bomb.vx += (dx / dist) * falloff * 6;
+          bomb.vy += (dy / dist) * falloff * 6 - 2;
+          if (d2 < r2) bomb.fuse = Math.min(bomb.fuse, 4);
+        }
+      }
+    }
+
+    step() {
+      this.tick++;
+      this.stamp = (this.stamp % 254) + 1;
+      this.stepGrid();
+      this.stepTornadoes();
+      this.stepTsunamis();
+      this.stepBombs();
+      this.stepFireworks();
+      this.stepBullets();
+      this.stepRockets();
+      this.stepParticles();
+      this.stepMobs();
+      this.stepFlashes();
+      this.renderPixels();
+    }
+
+    stepGrid() {
+      const W = this.width, H = this.height;
+      const type = this.type, life = this.life, variant = this.variant, updated = this.updated;
+      const stamp = this.stamp, flip = (this.tick & 1) === 0;
+
+      for (let y = H - 1; y >= 0; y--) {
+        const rowBase = y * W;
+        const rowFlip = flip ? (y & 1) === 0 : (y & 1) === 1;
+
+        for (let xi = 0; xi < W; xi++) {
+          const x = rowFlip ? xi : (W - 1 - xi);
+          const i = rowBase + x;
+          if (updated[i] === stamp) continue;
+
+          const t = type[i];
+          if (t === EL.EMPTY) continue;
+
+          if (isTransient(t)) {
+            if (life[i] <= 1) {
+              if (t === EL.FIRE && this.rand() < 0.16) {
+                type[i] = EL.SMOKE;
+                life[i] = 40 + this.randInt(35);
+                variant[i] = this.randInt(256);
+                updated[i] = stamp;
+              } else {
+                type[i] = EL.EMPTY;
+                life[i] = 0;
+              }
+              continue;
+            }
+            life[i]--;
+            this.updateTransient(x, y, i, t);
+            continue;
+          }
+
+          if (isPowder(t)) { this.updatePowder(x, y, i, t); continue; }
+          if (isLiquid(t)) { this.updateLiquid(x, y, i, t); continue; }
+          this.updateSolid(x, y, i, t);
+        }
+      }
+    }
+
+    updateTransient(x, y, i, t) {
+      const W = this.width, H = this.height, type = this.type, life = this.life, updated = this.updated, stamp = this.stamp;
+
+      if (t === EL.FIRE) {
+        for (let dy = -1; dy <= 1; dy++) {
+          const ny = y + dy;
+          if (ny < 0 || ny >= H) continue;
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = x + dx;
+            if (nx < 0 || nx >= W) continue;
+            const ni = ny * W + nx, nt = type[ni];
+            if (nt === EL.WATER || nt === EL.SALTWATER) {
+              const wasSalt = nt === EL.SALTWATER;
+              type[ni] = (wasSalt && this.rand() < 0.3) ? EL.SALT : EL.STEAM;
+              life[ni] = type[ni] === EL.STEAM ? (55 + this.randInt(40)) : 0;
+              updated[ni] = stamp;
+              type[i] = EL.STEAM; life[i] = 50 + this.randInt(35); updated[i] = stamp;
+              return;
+            } else if (nt === EL.ICE || nt === EL.SNOW) {
+              type[ni] = EL.WATER; life[ni] = 0; updated[ni] = stamp;
+              life[i] = Math.min(life[i], 4);
+            } else if (nt === EL.TNT) {
+              type[ni] = EL.EMPTY; this.explode(nx, ny, 18, 14); return;
+            } else if (nt === EL.GUNPOWDER) {
+              type[ni] = EL.EMPTY; this.explode(nx, ny, 5, 4); return;
+            } else if (nt === EL.OIL && this.rand() < 0.45) {
+              type[ni] = EL.FIRE; life[ni] = 30 + this.randInt(25); updated[ni] = stamp;
+            } else if (nt === EL.WOOD && this.rand() < 0.12 && life[ni] >= 175) {
+              life[ni] = 174;
+            } else if (nt === EL.PLANT && this.rand() < 0.35 && life[ni] >= 68) {
+              life[ni] = 67;
+            } else if (nt === EL.SEED && this.rand() < 0.4) {
+              type[ni] = EL.FIRE; life[ni] = 20; updated[ni] = stamp;
+            } else if (nt === EL.SAND && this.rand() < 0.004) {
+              type[ni] = EL.GLASS; life[ni] = 0; updated[ni] = stamp;
+            }
+          }
+        }
+        if (y > 0) {
+          const dir = this.rand() < 0.5 ? -1 : 1;
+          const up = (y - 1) * W + x;
+          const upSide = (x + dir >= 0 && x + dir < W) ? (y - 1) * W + (x + dir) : -1;
+          if (type[up] === EL.EMPTY && this.rand() < 0.72) this.swapCells(i, up);
+          else if (upSide >= 0 && type[upSide] === EL.EMPTY && this.rand() < 0.65) this.swapCells(i, upSide);
+        }
+        return;
+      }
+
+      if (t === EL.SMOKE || t === EL.ACID_GAS) {
+        if (y > 0) {
+          const dir = this.rand() < 0.5 ? -1 : 1;
+          const tx = x + (this.rand() < 0.45 ? dir : 0);
+          if (tx >= 0 && tx < W) {
+            const ni = (y - 1) * W + tx;
+            if (type[ni] === EL.EMPTY || (type[ni] === EL.FIRE && this.rand() < 0.2)) {
+              this.swapCells(i, ni); return;
+            }
+          }
+          const sideX = x + dir;
+          if (sideX >= 0 && sideX < W && type[y * W + sideX] === EL.EMPTY && this.rand() < 0.5) {
+            this.swapCells(i, y * W + sideX);
+          }
+        } else {
+          if (life[i] > 2) life[i]--;
+          const sideX = x + (this.rand() < 0.5 ? -1 : 1);
+          if (sideX >= 0 && sideX < W && type[y * W + sideX] === EL.EMPTY) this.swapCells(i, y * W + sideX);
+        }
+        return;
+      }
+
+      if (t === EL.STEAM) {
+        let nearCold = y < H * 0.22;
+        if (!nearCold && y > 0 && type[(y - 1) * W + x] === EL.ICE) nearCold = true;
+        if (nearCold && life[i] < 45 && this.rand() < 0.012) {
+          type[i] = EL.WATER; life[i] = 0; updated[i] = stamp; return;
+        }
+        if (y > 0) {
+          const dir = this.rand() < 0.5 ? -1 : 1;
+          const tx = x + (this.rand() < 0.4 ? dir : 0);
+          if (tx >= 0 && tx < W) {
+            const ni = (y - 1) * W + tx;
+            if (type[ni] === EL.EMPTY || isLiquid(type[ni])) { this.swapCells(i, ni); return; }
+          }
+          const sideX = x + dir;
+          if (sideX >= 0 && sideX < W && type[y * W + sideX] === EL.EMPTY && this.rand() < 0.5) {
+            this.swapCells(i, y * W + sideX);
+          }
+        } else if (life[i] > 2) {
+          life[i]--;
+        }
+        return;
+      }
+
+      if (t === EL.SPARK) {
+        for (let dy = -1; dy <= 1; dy++) {
+          const ny = y + dy;
+          if (ny < 0 || ny >= H) continue;
+          for (let dx = -1; dx <= 1; dx++) {
+            const nx = x + dx;
+            if (nx < 0 || nx >= W) continue;
+            const ni = ny * W + nx, nt = type[ni];
+            if (nt === EL.METAL && life[ni] === 0) life[ni] = 14;
+            else if (nt === EL.TNT) { type[ni] = EL.EMPTY; this.explode(nx, ny, 18, 14); return; }
+            else if (nt === EL.GUNPOWDER) { type[ni] = EL.EMPTY; this.explode(nx, ny, 5, 4); return; }
+            else if (nt === EL.OIL && this.rand() < 0.55) { type[ni] = EL.FIRE; life[ni] = 35; updated[ni] = stamp; }
+            else if (nt === EL.WOOD && this.rand() < 0.15 && life[ni] >= 175) life[ni] = 174;
+            else if (nt === EL.ICE && this.rand() < 0.25) { type[ni] = EL.WATER; life[ni] = 0; }
+          }
+        }
+        const nx = x + this.randInt(3) - 1, ny = y + this.randInt(3) - 1;
+        if (nx >= 0 && nx < W && ny >= 0 && ny < H && type[ny * W + nx] === EL.EMPTY) this.swapCells(i, ny * W + nx);
+        return;
+      }
+
+      if (t === EL.EMBER) {
+        for (let dy = -1; dy <= 1; dy++) {
+          const ny = y + dy;
+          if (ny < 0 || ny >= H) continue;
+          for (let dx = -1; dx <= 1; dx++) {
+            const nx = x + dx;
+            if (nx < 0 || nx >= W) continue;
+            const ni = ny * W + nx, nt = type[ni];
+            if (nt === EL.OIL && this.rand() < 0.4) { type[ni] = EL.FIRE; life[ni] = 32; }
+            else if (nt === EL.GUNPOWDER) { type[ni] = EL.EMPTY; this.explode(nx, ny, 5, 4); return; }
+            else if (nt === EL.TNT) { type[ni] = EL.EMPTY; this.explode(nx, ny, 18, 14); return; }
+            else if (nt === EL.WOOD && this.rand() < 0.08 && life[ni] >= 175) life[ni] = 174;
+            else if (nt === EL.WATER || nt === EL.SALTWATER) { type[i] = EL.STEAM; life[i] = 40; return; }
+          }
+        }
+        const dy = this.rand() < 0.45 ? 1 : (this.rand() < 0.25 ? -1 : 0);
+        const dx = this.rand() < 0.5 ? (this.rand() < 0.5 ? -1 : 1) : 0;
+        const nx = x + dx, ny = y + dy;
+        if (nx >= 0 && nx < W && ny >= 0 && ny < H && type[ny * W + nx] === EL.EMPTY) this.swapCells(i, ny * W + nx);
+      }
+    }
+
+    updatePowder(x, y, i, t) {
+      const W = this.width, H = this.height, type = this.type, life = this.life, updated = this.updated, stamp = this.stamp;
+
+      if (t === EL.SALT) {
+        const dirs = [[0, 1], [-1, 0], [1, 0], [0, -1]];
+        for (let k = 0; k < 4; k++) {
+          const nx = x + dirs[k][0], ny = y + dirs[k][1];
+          if (nx >= 0 && nx < W && ny >= 0 && ny < H) {
+            const ni = ny * W + nx;
+            if (type[ni] === EL.WATER) {
+              type[ni] = EL.SALTWATER; life[ni] = 0; updated[ni] = stamp;
+              type[i] = EL.EMPTY; life[i] = 0; return;
+            }
+          }
+        }
+      } else if (t === EL.SEED) {
+        const dirs = [[0, 1], [-1, 0], [1, 0], [0, -1]];
+        for (let k = 0; k < 4; k++) {
+          const nx = x + dirs[k][0], ny = y + dirs[k][1];
+          if (nx >= 0 && nx < W && ny >= 0 && ny < H) {
+            const ni = ny * W + nx;
+            if (type[ni] === EL.WATER || type[ni] === EL.SALTWATER) {
+              type[ni] = EL.EMPTY; type[i] = EL.PLANT; life[i] = 70; updated[i] = stamp; return;
+            }
+          }
+        }
+      } else if (t === EL.SNOW) {
+        if (this.rand() < 0.35) return;
+      } else if (t === EL.ASH) {
+        if (y + 1 < H && type[(y + 1) * W + x] === EL.EMPTY) {
+          if (life[i] > 0) life[i]--;
+          if (life[i] === 0) { type[i] = EL.EMPTY; return; }
+          if (this.rand() < 0.45) return;
+        }
+      }
+
+      if (y + 1 >= H) return;
+
+      const below = (y + 1) * W + x, bt = type[below];
+      const canSwap = (target) => target === EL.EMPTY || isTransient(target) || (isLiquid(target) && EL_META[t].density > EL_META[target].density);
+
+      if (canSwap(bt)) {
+        if (isLiquid(bt) && this.rand() < 0.35) return;
+        this.swapCells(i, below);
+        return;
+      }
+
+      const dir = (this.rand() < 0.5) ? -1 : 1;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const d = attempt === 0 ? dir : -dir;
+        const nx = x + d;
+        if (nx >= 0 && nx < W) {
+          const diag = (y + 1) * W + nx, dt = type[diag];
+          if (canSwap(dt) && (type[y * W + nx] === EL.EMPTY || isTransient(type[y * W + nx]) || isLiquid(type[y * W + nx]))) {
+            this.swapCells(i, diag);
+            return;
+          }
+        }
+      }
+    }
+
+    updateLiquid(x, y, i, t) {
+      const W = this.width, H = this.height, type = this.type, life = this.life, updated = this.updated, stamp = this.stamp;
+
+      if (t === EL.LAVA) {
+        const dirs = [[0, 1], [0, -1], [-1, 0], [1, 0]];
+        for (let k = 0; k < 4; k++) {
+          const nx = x + dirs[k][0], ny = y + dirs[k][1];
+          if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
+          const ni = ny * W + nx, nt = type[ni];
+          if (nt === EL.WATER || nt === EL.SALTWATER) {
+            type[ni] = EL.STEAM; life[ni] = 75; updated[ni] = stamp;
+            type[i] = EL.STONE; life[i] = 0; updated[i] = stamp; return;
+          } else if (nt === EL.ICE || nt === EL.SNOW) {
+            type[ni] = EL.WATER; life[ni] = 0; updated[ni] = stamp;
+            if (this.rand() < 0.2) { type[i] = EL.STONE; life[i] = 0; return; }
+          } else if (nt === EL.SAND && this.rand() < 0.02) {
+            type[ni] = EL.GLASS; life[ni] = 0; updated[ni] = stamp;
+          } else if (nt === EL.TNT) {
+            type[ni] = EL.EMPTY; this.explode(nx, ny, 18, 14); return;
+          } else if (nt === EL.GUNPOWDER) {
+            type[ni] = EL.EMPTY; this.explode(nx, ny, 5, 4); return;
+          } else if (nt === EL.OIL && this.rand() < 0.4) {
+            type[ni] = EL.FIRE; life[ni] = 35;
+          } else if (nt === EL.WOOD && life[ni] >= 175 && this.rand() < 0.15) {
+            life[ni] = 174;
+          } else if (nt === EL.PLANT && life[ni] >= 68 && this.rand() < 0.4) {
+            life[ni] = 67;
+          }
+        }
+        if (y > 0 && type[(y - 1) * W + x] === EL.EMPTY && this.rand() < 0.008) {
+          this.setCell(x, y - 1, this.rand() < 0.7 ? EL.FIRE : EL.EMBER);
+        }
+        if ((this.tick & 1) === 1 && this.rand() < 0.55) return;
+      }
+
+      if (t === EL.ACID) {
+        const dirs = [[0, 1], [-1, 0], [1, 0], [0, -1]];
+        for (let k = 0; k < 4; k++) {
+          const nx = x + dirs[k][0], ny = y + dirs[k][1];
+          if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
+          const ni = ny * W + nx, nt = type[ni];
+          if (nt === EL.EMPTY || nt === EL.ACID || nt === EL.GLASS || nt === EL.LAVA || isTransient(nt)) continue;
+
+          let eatChance = 0.18;
+          if (nt === EL.METAL) eatChance = 0.025;
+          else if (nt === EL.STONE) eatChance = 0.05;
+          else if (nt === EL.WATER || nt === EL.SALTWATER) eatChance = 0.04;
+
+          if (this.rand() < eatChance) {
+            type[ni] = EL.ACID_GAS; life[ni] = 22 + this.randInt(16); updated[ni] = stamp;
+            const cost = (nt === EL.METAL || nt === EL.STONE) ? 28 : 16;
+            if (life[i] <= cost) {
+              type[i] = EL.ACID_GAS; life[i] = 20; updated[i] = stamp; return;
+            }
+            life[i] -= cost;
+            break;
+          }
+        }
+      }
+
+      if (t === EL.WATER || t === EL.SALTWATER) {
+        if (y + 1 < H && type[(y + 1) * W + x] === EL.ASH && this.rand() < 0.25) {
+          type[(y + 1) * W + x] = EL.EMPTY;
+        }
+      }
+
+      const myDensity = EL_META[t].density;
+      const canDisplace = (target) => target === EL.EMPTY || isTransient(target) || (isLiquid(target) && myDensity > EL_META[target].density);
+
+      if (y + 1 < H) {
+        const below = (y + 1) * W + x;
+        if (canDisplace(type[below])) { this.swapCells(i, below); return; }
+        const dir = this.rand() < 0.5 ? -1 : 1;
+        for (let a = 0; a < 2; a++) {
+          const nx = x + (a === 0 ? dir : -dir);
+          if (nx >= 0 && nx < W) {
+            const diag = (y + 1) * W + nx;
+            if (canDisplace(type[diag])) { this.swapCells(i, diag); return; }
+          }
+        }
+      }
+
+      const disp = t === EL.LAVA ? 2 : (t === EL.OIL ? 4 : 6);
+      const dir = this.rand() < 0.5 ? -1 : 1;
+      for (let s = 0; s < 2; s++) {
+        const stepDir = s === 0 ? dir : -dir;
+        for (let d = 1; d <= disp; d++) {
+          const nx = x + stepDir * d;
+          if (nx < 0 || nx >= W) break;
+          const ni = y * W + nx;
+          if (canDisplace(type[ni])) {
+            if (d === disp || nx + stepDir < 0 || nx + stepDir >= W || !canDisplace(type[y * W + (nx + stepDir)])) {
+              this.swapCells(i, ni);
+              return;
+            }
+          } else {
+            break;
+          }
+        }
+      }
+    }
+
+    updateSolid(x, y, i, t) {
+      const W = this.width, H = this.height, type = this.type, life = this.life, updated = this.updated, stamp = this.stamp;
+
+      if (t === EL.WOOD) {
+        if (life[i] < 180) {
+          if (life[i] <= 1) {
+            type[i] = this.rand() < 0.35 ? EL.ASH : EL.EMPTY;
+            life[i] = type[i] === EL.ASH ? 450 : 0;
+            return;
+          }
+          for (let dy = -1; dy <= 1; dy++) {
+            const ny = y + dy;
+            if (ny < 0 || ny >= H) continue;
+            for (let dx = -1; dx <= 1; dx++) {
+              const nx = x + dx;
+              if (nx < 0 || nx >= W) continue;
+              const ni = ny * W + nx, nt = type[ni];
+              if (nt === EL.WATER || nt === EL.SALTWATER) {
+                life[i] = 180; type[ni] = EL.STEAM; life[ni] = 60; return;
+              }
+            }
+          }
+          if (this.rand() < 0.45) life[i]--;
+          const dir = this.randInt(4);
+          const ox = dir === 2 ? -1 : dir === 3 ? 1 : 0;
+          const oy = dir === 0 ? -1 : dir === 1 ? 1 : 0;
+          const nx = x + ox, ny = y + oy;
+          if (nx >= 0 && nx < W && ny >= 0 && ny < H) {
+            const ni = ny * W + nx;
+            if (type[ni] === EL.EMPTY && this.rand() < 0.16) {
+              const r = this.rand();
+              this.setCell(nx, ny, r < 0.65 ? EL.FIRE : (r < 0.9 ? EL.SMOKE : EL.EMBER));
+            } else if (type[ni] === EL.WOOD && life[ni] >= 180 && this.rand() < 0.045) {
+              life[ni] = 179;
+            } else if (type[ni] === EL.PLANT && life[ni] >= 70 && this.rand() < 0.18) {
+              life[ni] = 69;
+            }
+          }
+        }
+        return;
+      }
+
+      if (t === EL.PLANT) {
+        if (life[i] < 70) {
+          if (life[i] <= 1) {
+            type[i] = this.rand() < 0.15 ? EL.ASH : EL.EMPTY;
+            life[i] = type[i] === EL.ASH ? 350 : 0;
+            return;
+          }
+          life[i] -= 2;
+          if (y > 0 && type[(y - 1) * W + x] === EL.EMPTY && this.rand() < 0.35) {
+            this.setCell(x, y - 1, this.rand() < 0.7 ? EL.FIRE : EL.SMOKE);
+          }
+          for (let dy = -1; dy <= 1; dy++) {
+            const ny = y + dy;
+            if (ny < 0 || ny >= H) continue;
+            for (let dx = -1; dx <= 1; dx++) {
+              const nx = x + dx;
+              if (nx < 0 || nx >= W) continue;
+              const ni = ny * W + nx;
+              if (type[ni] === EL.PLANT && life[ni] >= 70 && this.rand() < 0.25) life[ni] = 69;
+              else if (type[ni] === EL.WOOD && life[ni] >= 180 && this.rand() < 0.06) life[ni] = 179;
+            }
+          }
+          return;
+        }
+        for (let dy = -1; dy <= 1; dy++) {
+          const ny = y + dy;
+          if (ny < 0 || ny >= H) continue;
+          for (let dx = -1; dx <= 1; dx++) {
+            const nx = x + dx;
+            if (nx < 0 || nx >= W) continue;
+            const ni = ny * W + nx;
+            if (type[ni] === EL.WATER && this.rand() < 0.16) {
+              type[ni] = EL.EMPTY; life[ni] = 0;
+              const gx = x + (this.randInt(3) - 1), gy = y - (this.rand() < 0.7 ? 1 : 0);
+              if (gx >= 0 && gx < W && gy >= 0 && gy < H) {
+                const gi = gy * W + gx;
+                if (type[gi] === EL.EMPTY) this.setCell(gx, gy, EL.PLANT, 70);
+              }
+              return;
+            }
+          }
+        }
+        return;
+      }
+
+      if (t === EL.ICE && this.rand() < 0.008) {
+        let iceNeighbors = 0, waterIdx = -1;
+        for (let dy = -1; dy <= 1; dy++) {
+          const ny = y + dy;
+          if (ny < 0 || ny >= H) continue;
+          for (let dx = -1; dx <= 1; dx++) {
+            const nx = x + dx;
+            if (nx < 0 || nx >= W) continue;
+            const ni = ny * W + nx;
+            if (type[ni] === EL.ICE) iceNeighbors++;
+            else if (type[ni] === EL.WATER) waterIdx = ni;
+          }
+        }
+        if (iceNeighbors >= 4 && waterIdx >= 0) {
+          type[waterIdx] = EL.ICE; life[waterIdx] = 0; updated[waterIdx] = stamp;
+        }
+        return;
+      }
+
+      if (t === EL.METAL && life[i] > 0) {
+        if (life[i] === 14) {
+          for (let dy = -1; dy <= 1; dy++) {
+            const ny = y + dy;
+            if (ny < 0 || ny >= H) continue;
+            for (let dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              const nx = x + dx;
+              if (nx < 0 || nx >= W) continue;
+              const ni = ny * W + nx, nt = type[ni];
+              if (nt === EL.METAL && life[ni] === 0) life[ni] = 14;
+              else if (nt === EL.TNT) { type[ni] = EL.EMPTY; this.explode(nx, ny, 18, 14); return; }
+              else if (nt === EL.GUNPOWDER) { type[ni] = EL.EMPTY; this.explode(nx, ny, 5, 4); return; }
+              else if (nt === EL.SALTWATER && this.rand() < 0.2) { type[ni] = EL.STEAM; life[ni] = 45; }
+              else if (nt === EL.EMPTY && this.rand() < 0.025) this.setCell(nx, ny, EL.SPARK, 8);
+            }
+          }
+        }
+        life[i]--;
+      }
+    }
+
+    stepTornadoes() {
+      const W = this.width, H = this.height;
+      for (let t = this.tornadoes.length - 1; t >= 0; t--) {
+        const tor = this.tornadoes[t];
+        tor.phase += 0.25;
+        if (!tor.controlled) {
+          tor.x += tor.vx + Math.sin(tor.phase * 0.2) * 0.4;
+          tor.life--;
+          if (tor.life <= 0 || tor.x < -20 || tor.x > W + 20) {
+            this.tornadoes.splice(t, 1);
+            continue;
+          }
+        }
+
+        const funnelH = Math.min(H * 0.72, 140);
+        const topY = Math.max(0, tor.y - funnelH);
+        const botY = Math.min(H - 2, tor.y + 16);
+
+        for (let k = 0; k < 28; k++) {
+          const py = (topY + this.rand() * (botY - topY)) | 0;
+          const heightFrac = 1 - (py - topY) / Math.max(1, botY - topY);
+          const halfW = 10 + heightFrac * 24;
+          const px = (tor.x + (this.rand() - 0.5) * 2 * halfW) | 0;
+          if (px < 0 || px >= W || py < 0 || py >= H) continue;
+          const i = py * W + px, et = this.type[i];
+          if (isPowder(et) || isLiquid(et) || et === EL.FIRE) {
+            this.type[i] = EL.EMPTY; this.life[i] = 0;
+            const dx = px - tor.x;
+            this.spawnParticle({
+              x: px, y: py,
+              vx: -dx * 0.14 + (this.rand() - 0.5) * 2.5,
+              vy: -2.0 - this.rand() * 2.4,
+              gravity: 0.11, life: 65, maxLife: 65, elType: et,
+              color: EL_META[et].color, size: 1.5, redeposit: !isTransient(et),
+            });
+          } else if (et === EL.EMPTY && this.rand() < 0.35) {
+            const dx = px - tor.x;
+            this.spawnParticle({
+              x: px, y: py,
+              vx: -dx * 0.22 + Math.cos(tor.phase + py * 0.1) * 2.2,
+              vy: -1.4 - this.rand() * 1.2,
+              gravity: -0.02, life: 14 + this.randInt(10), maxLife: 24,
+              color: '#cbd5e1', size: 1.2, redeposit: false,
+            });
+          }
+        }
+
+        for (const mob of this.mobs) {
+          if (mob.state === 'grabbed') continue;
+          const dx = tor.x - mob.x, dy = (tor.y - 25) - mob.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist < 62) {
+            const pull = (1 - dist / 62);
+            mob.vx += (dx / (dist || 1)) * pull * 1.1 + Math.sin(tor.phase + mob.id) * 0.65;
+            mob.vy -= pull * 1.25;
+            mob.state = 'ragdoll';
+            mob.ragdollTimer = Math.max(mob.ragdollTimer, 35);
+            mob.angVel += (this.rand() - 0.5) * 0.25;
+            if (dist < 14 && this.rand() < 0.12) {
+              mob.vx = (this.rand() < 0.5 ? -1 : 1) * (4 + this.rand() * 3);
+              mob.vy = -4.5 - this.rand() * 2.5;
+            }
+          }
+        }
+
+        for (const bomb of this.bombs) {
+          if (bomb.grabbed) continue;
+          const dx = tor.x - bomb.x, dy = (tor.y - 20) - bomb.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist < 56) {
+            const pull = 1 - dist / 56;
+            bomb.vx += (dx / (dist || 1)) * pull * 0.9 + Math.cos(tor.phase) * 0.5;
+            bomb.vy -= pull * 1.1;
+          }
+        }
+      }
+    }
+
+    stepTsunamis() {
+      const W = this.width, H = this.height;
+      for (let t = this.tsunamis.length - 1; t >= 0; t--) {
+        const w = this.tsunamis[t];
+        w.x += w.dir * w.speed;
+        w.life--;
+        if (w.life <= 0) { this.tsunamis.splice(t, 1); continue; }
+
+        const crestX = w.x | 0;
+        const startY = Math.max(2, H - w.waveHeight);
+        for (let dx = -10; dx <= 10; dx++) {
+          const gx = crestX + dx;
+          if (gx < 1 || gx >= W - 1) continue;
+          for (let gy = startY; gy < H - 1; gy += 2) {
+            if (this.rand() < 0.45) {
+              const i = gy * W + gx, cur = this.type[i];
+              if (cur === EL.EMPTY || isTransient(cur)) this.setCell(gx, gy, EL.WATER);
+            }
+          }
+        }
+
+        for (let k = 0; k < 10; k++) {
+          this.spawnParticle({
+            x: crestX + w.dir * 4, y: startY + this.rand() * 24,
+            vx: w.dir * (2.5 + this.rand() * 2.2), vy: -1.4 - this.rand() * 1.8,
+            gravity: 0.14, life: 24, maxLife: 24, color: '#e0f2fe', size: 1.8, redeposit: false,
+          });
+        }
+
+        for (const mob of this.mobs) {
+          if (mob.state === 'grabbed') continue;
+          if (Math.abs(mob.x - w.x) < 28 && mob.y > startY - 12) {
+            mob.vx += w.dir * 1.35; mob.vy -= 0.75;
+            mob.state = 'ragdoll'; mob.ragdollTimer = Math.max(mob.ragdollTimer, 35);
+            mob.burnTimer = 0; mob.angVel += w.dir * 0.18;
+          }
+        }
+        for (const bomb of this.bombs) {
+          if (bomb.grabbed) continue;
+          if (Math.abs(bomb.x - w.x) < 26 && bomb.y > startY - 10) {
+            bomb.vx += w.dir * 1.2; bomb.vy -= 0.5;
+          }
+        }
+      }
+    }
+
+    stepBombs() {
+      const W = this.width, H = this.height;
+      for (let i = this.bombs.length - 1; i >= 0; i--) {
+        const b = this.bombs[i];
+        b.fuse--;
+        if (this.rand() < 0.65) {
+          this.spawnParticle({
+            x: b.x + 2, y: b.y - 4,
+            vx: (this.rand() - 0.5) * 1.6, vy: -1.2 - this.rand() * 1.2,
+            gravity: 0.08, life: 8 + this.randInt(8), maxLife: 16,
+            color: this.rand() < 0.5 ? '#ffe066' : '#ff6b2b', size: 1.4, redeposit: false,
+          });
+        }
+
+        let hotTouch = false;
+        const gx = b.x | 0, gy = b.y | 0;
+        if (gx >= 1 && gx < W - 1 && gy >= 1 && gy < H - 1) {
+          const ct = this.type[gy * W + gx];
+          if (ct === EL.FIRE || ct === EL.LAVA || ct === EL.SPARK) hotTouch = true;
+        }
+
+        if (b.fuse <= 0 || hotTouch) {
+          const bx = b.x, by = b.y;
+          if (this.grabbed && this.grabbed.ref === b) this.grabbed = null;
+          this.bombs.splice(i, 1);
+          this.explode(bx, by, 17, 13);
+          continue;
+        }
+        if (b.grabbed) continue;
+
+        b.vy += 0.16; b.vx *= 0.99;
+        const nx = b.x + b.vx, ny = b.y + b.vy;
+        const testX = Math.max(2, Math.min(W - 3, nx)) | 0;
+        const testY = Math.max(2, Math.min(H - 3, ny)) | 0;
+
+        if (isBlocking(this.type[testY * W + (b.x | 0)]) || ny >= H - 3) {
+          b.vy = -b.vy * 0.42; b.vx *= 0.82;
+          if (Math.abs(b.vy) < 0.4) b.vy = 0;
+        } else {
+          b.y = Math.max(2, Math.min(H - 3, ny));
+        }
+
+        if (isBlocking(this.type[(b.y | 0) * W + testX]) || nx < 2 || nx > W - 3) {
+          b.vx = -b.vx * 0.55;
+        } else {
+          b.x = Math.max(2, Math.min(W - 3, nx));
+        }
+        b.angle += b.vx * 0.12;
+      }
+    }
+
+    stepFireworks() {
+      const W = this.width, H = this.height;
+      for (let i = this.fireworks.length - 1; i >= 0; i--) {
+        const fw = this.fireworks[i];
+        fw.x += fw.vx + (this.rand() - 0.5) * 0.25;
+        fw.y += fw.vy; fw.vy *= 0.992; fw.life--;
+
+        this.spawnParticle({
+          x: fw.x, y: fw.y + 2, vx: (this.rand() - 0.5) * 0.5, vy: 0.6 + this.rand() * 0.6,
+          gravity: 0.05, life: 14, maxLife: 14, color: '#ffd166', size: 1.4, redeposit: false,
+        });
+
+        const gx = fw.x | 0, gy = fw.y | 0;
+        const hitSolid = gx >= 0 && gx < W && gy >= 0 && gy < H && isBlocking(this.type[gy * W + gx]);
+
+        if (fw.life <= 0 || fw.y < 10 || hitSolid) {
+          const count = 42;
+          for (let s = 0; s < count; s++) {
+            const ang = (s / count) * Math.PI * 2 + (this.rand() - 0.5) * 0.2;
+            const spd = 1.2 + this.rand() * 2.8;
+            this.spawnParticle({
+              x: fw.x, y: fw.y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
+              gravity: 0.055, life: 28 + this.randInt(22), maxLife: 50, color: fw.color, size: 1.8, redeposit: false,
+            });
+          }
+          this.flashes.push({ x: fw.x, y: fw.y, radius: 1, maxRadius: 14, life: 7, maxLife: 7 });
+          this.fireworks.splice(i, 1);
+        }
+      }
+    }
+
+    stepBullets() {
+      const W = this.width, H = this.height;
+      for (let i = this.bullets.length - 1; i >= 0; i--) {
+        const b = this.bullets[i];
+        b.life--;
+        if (b.life <= 0) { this.bullets.splice(i, 1); continue; }
+
+        const steps = 6, sx = b.vx / steps, sy = b.vy / steps;
+        let hit = false;
+
+        for (let s = 0; s < steps; s++) {
+          b.x += sx; b.y += sy;
+          const gx = b.x | 0, gy = b.y | 0;
+          if (gx < 0 || gx >= W || gy < 0 || gy >= H) { hit = true; break; }
+
+          for (const mob of this.mobs) {
+            if (Math.abs(b.x - mob.x) < 5 && b.y >= mob.y - 14 && b.y <= mob.y + 1) {
+              mob.hp -= 22; mob.hurtFlash = 7;
+              mob.vx += b.vx * 0.45; mob.vy += b.vy * 0.35 - 1.2;
+              mob.state = 'ragdoll'; mob.ragdollTimer = Math.max(mob.ragdollTimer, 28);
+              mob.angVel += (b.vx >= 0 ? 1 : -1) * 0.25;
+              this.spawnSplat(b.x, b.y, mob.type === 'zombie' ? '#52e063' : '#ff6b6b', 7, 2.0);
+              hit = true; break;
+            }
+          }
+          if (hit) break;
+
+          const idx = gy * W + gx, ct = this.type[idx];
+          if (ct === EL.TNT || ct === EL.GUNPOWDER) {
+            this.type[idx] = EL.EMPTY;
+            this.explode(gx, gy, ct === EL.TNT ? 18 : 6, ct === EL.TNT ? 14 : 5);
+            hit = true; break;
+          } else if (isBlocking(ct)) {
+            if (ct === EL.METAL || ct === EL.STONE) {
+              this.spawnSplat(b.x, b.y, '#ffe066', 5, 2.2);
+              if (ct === EL.STONE && this.rand() < 0.45) this.type[idx] = EL.EMPTY;
+              hit = true; break;
+            } else {
+              this.paintBrush(gx, gy, 1, EL.EMPTY, true);
+              this.spawnSplat(b.x, b.y, EL_META[ct].color, 4, 1.5);
+              if (this.rand() < 0.55) { hit = true; break; }
+            }
+          } else if (isLiquid(ct)) {
+            this.spawnSplat(b.x, b.y, EL_META[ct].color, 3, 1.4);
+            b.vx *= 0.85; b.vy *= 0.85;
+          }
+        }
+        if (hit) this.bullets.splice(i, 1);
+      }
+    }
+
+    stepRockets() {
+      const W = this.width, H = this.height;
+      for (let i = this.rockets.length - 1; i >= 0; i--) {
+        const r = this.rockets[i];
+        r.life--; r.vx *= 1.03; r.vy *= 1.03; r.x += r.vx; r.y += r.vy;
+        const gx = r.x | 0, gy = r.y | 0;
+        if (this.inBounds(gx, gy) && this.type[gy * W + gx] === EL.EMPTY) {
+          this.setCell(gx, gy, this.rand() < 0.45 ? EL.FIRE : EL.SMOKE, 38);
+        }
+        let boom = r.life <= 0 || gx < 1 || gx >= W - 1 || gy < 1 || gy >= H - 1;
+        if (!boom && isBlocking(this.type[gy * W + gx])) boom = true;
+        if (!boom) {
+          for (const mob of this.mobs) {
+            if (Math.abs(r.x - mob.x) < 6 && r.y >= mob.y - 14 && r.y <= mob.y + 2) { boom = true; break; }
+          }
+        }
+        if (boom) {
+          const ex = Math.max(4, Math.min(W - 5, r.x)), ey = Math.max(4, Math.min(H - 5, r.y));
+          this.rockets.splice(i, 1);
+          this.explode(ex, ey, 21, 16);
+        }
+      }
+    }
+
+    stepParticles() {
+      const W = this.width, H = this.height;
+      for (let i = this.particles.length - 1; i >= 0; i--) {
+        const p = this.particles[i];
+        p.life--; p.vy += p.gravity; p.vx *= 0.985; p.x += p.vx; p.y += p.vy;
+        const gx = p.x | 0, gy = p.y | 0;
+        if (p.life <= 0 || gx < 0 || gx >= W || gy < 0 || gy >= H) {
+          this.particles.splice(i, 1);
+          continue;
+        }
+        if (p.redeposit && p.elType) {
+          const idx = gy * W + gx;
+          if (isBlocking(this.type[idx]) || gy >= H - 2) {
+            let placed = false;
+            for (const ty of [gy - 1, gy, gy - 2]) {
+              if (ty >= 0 && ty < H) {
+                const ti = ty * W + gx;
+                if (this.type[ti] === EL.EMPTY || isTransient(this.type[ti])) {
+                  this.setCell(gx, ty, p.elType);
+                  placed = true; break;
+                }
+              }
+            }
+            if (placed || p.life < 40) this.particles.splice(i, 1);
+            else { p.vx *= -0.4; p.vy *= -0.3; }
+          }
+        }
+      }
+    }
+
+    stepMobs() {
+      const W = this.width, H = this.height, type = this.type;
+      for (let i = this.mobs.length - 1; i >= 0; i--) {
+        const m = this.mobs[i];
+        if (m.hurtFlash > 0) m.hurtFlash--;
+        if (m.shockTimer > 0) m.shockTimer--;
+
+        const mx = Math.max(1, Math.min(W - 2, m.x | 0));
+        const myFeet = Math.max(1, Math.min(H - 2, m.y | 0));
+        const myBody = Math.max(1, Math.min(H - 2, (m.y - 6) | 0));
+        const myHead = Math.max(1, Math.min(H - 2, (m.y - 11) | 0));
+
+        const tFeet = type[myFeet * W + mx];
+        const tBody = type[myBody * W + mx];
+        const tHead = type[myHead * W + mx];
+
+        const inWater = isLiquid(tBody) && (tBody === EL.WATER || tBody === EL.SALTWATER || tBody === EL.OIL);
+        m.inWater = inWater;
+
+        if (tFeet === EL.LAVA || tBody === EL.LAVA) {
+          m.burnTimer = 110; m.hp -= 3.2; m.hurtFlash = 4;
+          if (m.state !== 'grabbed') m.vy = Math.min(m.vy, -1.5);
+        } else if (tFeet === EL.FIRE || tBody === EL.FIRE || tFeet === EL.EMBER) {
+          m.burnTimer = Math.max(m.burnTimer, 80);
+        }
+
+        if (tFeet === EL.ACID || tBody === EL.ACID) {
+          m.acidTimer = 15; m.hp -= 1.8; m.hurtFlash = 3;
+          if (this.rand() < 0.35 && this.inBounds(mx, myBody - 3) && type[(myBody - 3) * W + mx] === EL.EMPTY) {
+            this.setCell(mx, myBody - 3, EL.ACID_GAS, 20);
+          }
+        } else if (m.acidTimer > 0) m.acidTimer--;
+
+        if (tBody === EL.SPARK || tFeet === EL.SPARK || (tFeet === EL.METAL && this.life[myFeet * W + mx] > 0)) {
+          m.shockTimer = 18; m.hp -= 0.9;
+          m.state = 'ragdoll'; m.ragdollTimer = Math.max(m.ragdollTimer, 20);
+          m.vx += (this.rand() - 0.5) * 2.2; m.vy -= 0.8;
+        }
+
+        if (tBody === EL.WATER || tBody === EL.SALTWATER || tFeet === EL.WATER || tFeet === EL.SNOW) {
+          if (m.burnTimer > 0) {
+            m.burnTimer = 0;
+            if (this.inBounds(mx, myHead) && type[myHead * W + mx] === EL.EMPTY) this.setCell(mx, myHead, EL.STEAM, 45);
+          }
+        }
+
+        if (m.burnTimer > 0) {
+          m.burnTimer--; m.hp -= 0.28;
+          if (this.rand() < 0.35 && this.inBounds(mx, myHead) && type[myHead * W + mx] === EL.EMPTY) {
+            this.setCell(mx, myHead, this.rand() < 0.7 ? EL.FIRE : EL.SMOKE, 22);
+          }
+        }
+
+        if (isLiquid(tHead)) {
+          m.drownTimer++;
+          if (m.drownTimer % 18 === 0) {
+            this.spawnParticle({
+              x: m.x, y: m.y - 12, vx: (this.rand() - 0.5) * 0.4, vy: -0.9,
+              gravity: -0.02, life: 16, maxLife: 16, color: '#a5f3fc', size: 1.5, redeposit: false,
+            });
+          }
+          const drownThreshold = m.type === 'zombie' ? 220 : 120;
+          if (m.drownTimer > drownThreshold) { m.hp -= 0.55; m.hurtFlash = 3; }
+        } else {
+          m.drownTimer = Math.max(0, m.drownTimer - 3);
+        }
+
+        if (m.hp <= 0) {
+          const splatColors = { walker: '#60a5fa', jumper: '#a3e635', zombie: '#4ade80', dummy: '#fb923c' };
+          this.spawnSplat(m.x, m.y - 6, splatColors[m.type] || '#f87171', 18, 3.0);
+          if (this.grabbed && this.grabbed.ref === m) this.grabbed = null;
+          this.mobs.splice(i, 1);
+          continue;
+        }
+
+        if (m.state === 'grabbed') {
+          m.angle *= 0.85; m.walkPhase += 0.35;
+          continue;
+        }
+
+        if (m.state === 'ragdoll') {
+          m.ragdollTimer--; m.angle += m.angVel; m.angVel *= 0.96;
+          if (m.ragdollTimer <= 0 && m.onGround && Math.abs(m.vx) < 0.5 && Math.abs(m.vy) < 0.5) {
+            m.state = 'walk'; m.angle = 0; m.angVel = 0;
+          }
+        } else {
+          m.angle *= 0.78;
+          this.updateMobAI(m);
+        }
+
+        const gravity = inWater ? 0.03 : 0.16;
+        m.vy += gravity;
+        if (inWater) {
+          m.vx *= 0.86; m.vy *= 0.86;
+          if (m.state === 'walk' && isLiquid(tBody)) m.vy -= 0.14;
+        }
+
+        const nextX = m.x + m.vx;
+        const ix = Math.max(2, Math.min(W - 3, nextX | 0));
+        const iyFeet = Math.max(2, Math.min(H - 2, (m.y - 1) | 0));
+        const iyMid = Math.max(2, Math.min(H - 2, (m.y - 6) | 0));
+
+        if (nextX < 3 || nextX > W - 4) {
+          if (Math.abs(m.vx) > 4.5) {
+            m.hp -= Math.abs(m.vx) * 4; m.hurtFlash = 6;
+            this.spawnSplat(m.x, m.y - 6, '#e2e8f0', 6, 1.5);
+          }
+          m.vx = -m.vx * 0.55; m.facing *= -1;
+        } else if (isBlocking(type[iyMid * W + ix])) {
+          if (Math.abs(m.vx) > 4.5) {
+            m.hp -= Math.abs(m.vx) * 4; m.hurtFlash = 6;
+            this.spawnSplat(m.x, m.y - 6, '#e2e8f0', 6, 1.5);
+          }
+          m.vx = -m.vx * 0.5; m.facing *= -1;
+        } else if (isBlocking(type[iyFeet * W + ix])) {
+          let stepped = false;
+          for (let stepUp = 1; stepUp <= 3; stepUp++) {
+            const sy = Math.max(1, iyFeet - stepUp);
+            if (!isBlocking(type[sy * W + ix]) && !isBlocking(type[Math.max(0, sy - 5) * W + ix])) {
+              m.x = nextX; m.y = sy + 1; stepped = true; break;
+            }
+          }
+          if (!stepped) {
+            if (m.state === 'walk' && m.onGround && m.jumpCooldown <= 0) {
+              m.vy = -2.4; m.jumpCooldown = 18;
+            } else {
+              m.vx = -m.vx * 0.45; m.facing *= -1;
+            }
+          }
+        } else {
+          m.x = nextX;
+        }
+
+        const nextY = m.y + m.vy;
+        const fx = Math.max(2, Math.min(W - 3, m.x | 0));
+        const fy = Math.max(2, Math.min(H - 2, nextY | 0));
+        m.onGround = false;
+
+        if (m.vy >= 0) {
+          if (nextY >= H - 2 || isBlocking(type[fy * W + fx])) {
+            const impact = m.vy;
+            if (impact > 4.8) {
+              m.hp -= (impact - 4.0) * 11; m.hurtFlash = 7;
+              m.state = 'ragdoll'; m.ragdollTimer = Math.max(m.ragdollTimer, 25);
+              this.spawnSplat(m.x, m.y, '#cbd5e1', 7, 1.6);
+            }
+            if (m.state === 'ragdoll' && impact > 2.0) m.vy = -impact * (m.type === 'dummy' ? 0.45 : 0.3);
+            else m.vy = 0;
+            m.y = Math.min(H - 2, fy);
+            m.onGround = true;
+            m.vx *= m.state === 'ragdoll' ? 0.85 : 0.78;
+          } else {
+            m.y = nextY;
+          }
+        } else {
+          const headY = Math.max(1, (nextY - 12) | 0);
+          if (nextY <= 12 || isBlocking(type[headY * W + fx])) m.vy = -m.vy * 0.35;
+          else m.y = nextY;
+        }
+
+        if (Math.abs(m.vx) > 0.15) m.walkPhase += Math.abs(m.vx) * 0.45;
+      }
+
+      for (let i = 0; i < this.mobs.length; i++) {
+        const z = this.mobs[i];
+        if (z.type !== 'zombie') continue;
+        for (let j = 0; j < this.mobs.length; j++) {
+          if (i === j) continue;
+          const victim = this.mobs[j];
+          if (victim.type === 'zombie' || victim.type === 'dummy') continue;
+          if ((victim.x - z.x) ** 2 + (victim.y - z.y) ** 2 < 64) {
+            victim.type = 'zombie'; victim.hurtFlash = 8;
+            victim.hp = 120; victim.maxHp = 130;
+            this.spawnSplat(victim.x, victim.y - 7, '#4ade80', 8, 1.6);
+          }
+        }
+      }
+    }
+
+    updateMobAI(m) {
+      if (m.jumpCooldown > 0) m.jumpCooldown--;
+      m.aiTimer--;
+
+      if (m.burnTimer > 0) {
+        m.vx += m.facing * 0.25;
+        m.vx = Math.max(-1.9, Math.min(1.9, m.vx));
+        if (m.onGround && m.jumpCooldown <= 0) { m.vy = -2.3; m.jumpCooldown = 16; }
+        return;
+      }
+
+      if (m.type === 'zombie') {
+        let target = null, bestD2 = 160 * 160;
+        for (const other of this.mobs) {
+          if (other.type === 'zombie' || other.type === 'dummy') continue;
+          const d2 = (other.x - m.x) ** 2 + (other.y - m.y) ** 2;
+          if (d2 < bestD2) { bestD2 = d2; target = other; }
+        }
+        if (target) {
+          m.facing = target.x >= m.x ? 1 : -1;
+          m.vx += m.facing * 0.14;
+          m.vx = Math.max(-1.05, Math.min(1.05, m.vx));
+          if (m.onGround && target.y < m.y - 10 && m.jumpCooldown <= 0) { m.vy = -2.6; m.jumpCooldown = 28; }
+          return;
+        }
+      }
+
+      if (m.type === 'dummy') { m.vx *= 0.85; return; }
+
+      if (m.aiTimer <= 0) {
+        m.aiTimer = 35 + this.randInt(75);
+        if (this.rand() < 0.45) m.facing *= -1;
+      }
+
+      const speedCap = m.type === 'jumper' ? 1.35 : 0.9;
+      m.vx += m.facing * 0.13;
+      m.vx = Math.max(-speedCap, Math.min(speedCap, m.vx));
+
+      if (m.type === 'jumper' && m.onGround && m.jumpCooldown <= 0) {
+        m.vy = -3.1 - this.rand() * 0.8;
+        m.jumpCooldown = 18 + this.randInt(20);
+      }
+    }
+
+    stepFlashes() {
+      for (let i = this.flashes.length - 1; i >= 0; i--) {
+        const f = this.flashes[i];
+        f.life--;
+        f.radius = f.maxRadius * (1 - f.life / f.maxLife);
+        if (f.life <= 0) this.flashes.splice(i, 1);
+      }
+    }
+
+    renderPixels() {
+      const size = this.size, W = this.width, type = this.type, life = this.life, variant = this.variant, pixels = this.pixels, tick = this.tick;
+      for (let i = 0; i < size; i++) {
+        const t = type[i];
+        if (t === EL.EMPTY) { pixels[i] = BG_COLOR; continue; }
+        const v = variant[i], vOff = (v & 31) - 16;
+
+        switch (t) {
+          case EL.SAND: pixels[i] = packColor(Math.min(255, Math.max(0, 228 + vOff)), Math.min(255, Math.max(0, 190 + vOff)), Math.min(255, Math.max(0, 114 + (vOff >> 1)))); break;
+          case EL.SALT: { const s = 232 + (v & 15); pixels[i] = packColor(s, s - 3, s - 8); break; }
+          case EL.GUNPOWDER: { const c = 68 + (v & 23); pixels[i] = packColor(c, c + 3, c + 10); break; }
+          case EL.SEED: pixels[i] = packColor(152 + (v & 15), 124 + (v & 15), 68); break;
+          case EL.SNOW: { const c = 228 + (v & 23); pixels[i] = packColor(c, c + 4, 255); break; }
+          case EL.ASH: {
+            const a = Math.min(1, life[i] / 120);
+            pixels[i] = packColor((BG_R + (115 - BG_R) * a) | 0, (BG_G + (120 - BG_G) * a) | 0, (BG_B + (130 - BG_B) * a) | 0);
+            break;
+          }
+          case EL.WATER: { const sh = ((i + (tick >> 2)) & 7) === 0 ? 18 : 0; pixels[i] = packColor(34 + sh, 136 + sh, 252); break; }
+          case EL.SALTWATER: { const sh = ((i + (tick >> 2)) & 7) === 0 ? 16 : 0; pixels[i] = packColor(52 + sh, 182 + sh, 220); break; }
+          case EL.OIL: { const sh = v & 15; pixels[i] = packColor(118 + sh, 74 + (sh >> 1), 30 + (sh & 7)); break; }
+          case EL.LAVA: {
+            const p = (v + tick * 3) & 63;
+            pixels[i] = p > 44 ? packColor(255, 205, 55) : packColor(245, 78 + (p & 31), 18);
+            break;
+          }
+          case EL.ACID: { const g = (v + tick * 2) & 31; pixels[i] = packColor(85 + g, 245, 50 + (g >> 1)); break; }
+          case EL.STONE: { const c = 112 + (v & 31); pixels[i] = packColor(c, c + 4, c + 12); break; }
+          case EL.WOOD: {
+            const gr = ((i / W) | 0) & 3, bb = life[i] < 180 ? 35 : 0;
+            pixels[i] = packColor(Math.min(255, 132 + gr * 8 + (v & 7) + bb), Math.max(0, 82 + gr * 5 - (bb >> 1)), Math.max(0, 44 + gr * 3 - (bb >> 1)));
+            break;
+          }
+          case EL.METAL: {
+            const sh = ((i % W) + ((i / W) | 0)) & 7, zap = life[i] > 0 ? 90 : 0;
+            pixels[i] = packColor(Math.min(255, 145 + sh * 4 + zap), Math.min(255, 162 + sh * 4 + zap), Math.min(255, 180 + sh * 4 + (zap ? 75 : 0)));
+            break;
+          }
+          case EL.ICE: { const gl = (v & 15) > 12 ? 25 : 0; pixels[i] = packColor(148 + gl, 224 + (gl >> 1), 255); break; }
+          case EL.GLASS: { const ed = (v & 7) === 0 ? 22 : 0; pixels[i] = packColor(140 + ed, 204 + ed, 232 + ed); break; }
+          case EL.PLANT: {
+            const lf = v & 31, b = life[i] < 70 ? 60 : 0;
+            pixels[i] = packColor(36 + lf + b, Math.max(40, 165 + (lf >> 1) - b), 68);
+            break;
+          }
+          case EL.TNT: {
+            const x = i % W, y = (i / W) | 0;
+            const st = (y & 3) === 0 || ((x + y) & 7) === 0;
+            pixels[i] = st ? packColor(245, 235, 225) : packColor(225, 48, 42);
+            break;
+          }
+          case EL.FIRE: {
+            const f = Math.min(1, life[i] / 28);
+            pixels[i] = packColor((BG_R + (255 - BG_R) * Math.min(1, f * 1.4)) | 0, (BG_G + (220 * f * f)) | 0, (BG_B + (90 * f * f * f)) | 0);
+            break;
+          }
+          case EL.SMOKE: {
+            const a = Math.min(1, life[i] / 75) * 0.78, sh = 105 + (v & 31);
+            pixels[i] = packColor((BG_R + (sh - BG_R) * a) | 0, (BG_G + (sh + 4 - BG_G) * a) | 0, (BG_B + (sh + 12 - BG_B) * a) | 0);
+            break;
+          }
+          case EL.STEAM: {
+            const a = Math.min(1, life[i] / 80) * 0.72;
+            pixels[i] = packColor((BG_R + (205 - BG_R) * a) | 0, (BG_G + (232 - BG_G) * a) | 0, (BG_B + (255 - BG_B) * a) | 0);
+            break;
+          }
+          case EL.SPARK: {
+            const a = Math.min(1, life[i] / 14);
+            pixels[i] = packColor((BG_R + (160 - BG_R) * a) | 0, (BG_G + (248 - BG_G) * a) | 0, (BG_B + (255 - BG_B) * a) | 0);
+            break;
+          }
+          case EL.EMBER: {
+            const a = Math.min(1, life[i] / 40);
+            pixels[i] = packColor((BG_R + (255 - BG_R) * a) | 0, (BG_G + (135 * a * a)) | 0, (BG_B + (30 * a)) | 0);
+            break;
+          }
+          case EL.ACID_GAS: {
+            const a = Math.min(1, life[i] / 28) * 0.72;
+            pixels[i] = packColor((BG_R + (135 - BG_R) * a) | 0, (BG_G + (255 - BG_G) * a) | 0, (BG_B + (95 - BG_B) * a) | 0);
+            break;
+          }
+        }
+      }
+    }
+
+    countByType() {
+      const counts = new Uint32Array(25);
+      for (let i = 0; i < this.size; i++) counts[this.type[i]]++;
+      return counts;
+    }
+  }
+
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { SandEngine, EL, EL_META, isTransient, isSolid, isPowder, isLiquid };
+  } else {
+    root.SandForge = { SandEngine, EL, EL_META, isTransient, isSolid, isPowder, isLiquid };
+  }
+})(typeof window !== 'undefined' ? window : globalThis);
