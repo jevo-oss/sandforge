@@ -352,6 +352,7 @@
         onGround: false,
         inWater: false,
         dying: 0,
+        biteChain: 0,
       };
       this.mobs.push(mob);
       return mob;
@@ -2023,20 +2024,21 @@
         if (m.hp <= 0) {
           if (this.isHuman(m) && m.lastHitBy === 'zombie') {
             this.infectMob(m);
-            continue;
+            // Fall through so the new ghoul can hunt this frame
+          } else {
+            if (m.dying <= 0) m.dying = 18;
+            else m.dying--;
+            if (m.dying <= 0) {
+              const splatColors = { walker: '#c45c3a', jumper: '#e23e6e', zombie: '#9f8ab8', dummy: '#eab308' };
+              this.spawnSplat(m.x, m.y - 6, splatColors[m.type] || '#f87171', 18, 3.0);
+              if (this.grabbed && this.grabbed.ref === m) this.grabbed = null;
+              this.mobs.splice(i, 1);
+              continue;
+            }
+            m.state = 'ragdoll';
+            m.ragdollTimer = Math.max(m.ragdollTimer, m.dying);
+            m.attackTimer = 0;
           }
-          if (m.dying <= 0) m.dying = 18;
-          else m.dying--;
-          if (m.dying <= 0) {
-            const splatColors = { walker: '#c45c3a', jumper: '#e23e6e', zombie: '#9f8ab8', dummy: '#eab308' };
-            this.spawnSplat(m.x, m.y - 6, splatColors[m.type] || '#f87171', 18, 3.0);
-            if (this.grabbed && this.grabbed.ref === m) this.grabbed = null;
-            this.mobs.splice(i, 1);
-            continue;
-          }
-          m.state = 'ragdoll';
-          m.ragdollTimer = Math.max(m.ragdollTimer, m.dying);
-          m.attackTimer = 0;
         }
 
         if (m.state === 'grabbed') {
@@ -2139,11 +2141,28 @@
       m.maxHp = 130;
       m.hurtFlash = 12;
       m.combatTimer = 90;
-      m.attackCooldown = 22;
+      m.attackCooldown = 8;
       m.attackTimer = 0;
+      m.attackStyle = '';
+      m.biteChain = 0;
       m.lastHitBy = '';
+      m.dying = 0;
+      m.state = 'walk';
+      m.ragdollTimer = 0;
+      m.angle = 0;
+      m.angVel = 0;
+      m.vy = Math.min(m.vy, -0.8);
       this.spawnSplat(m.x, m.y - 7, '#a78bfa', 10, 1.8);
       return true;
+    }
+
+    isPrey(hunter, other) {
+      if (!hunter || !other || hunter === other) return false;
+      if (other.state === 'grabbed') return false;
+      if (other.hp <= 0 && other.type === 'zombie') return false;
+      if (hunter.type === 'zombie') return this.isHuman(other) || other.type === 'dummy';
+      if (this.isHuman(hunter)) return other.type === 'zombie';
+      return false;
     }
 
     hitMob(attacker, victim, damage, style) {
@@ -2189,9 +2208,7 @@
         for (let j = 0; j < mobs.length; j++) {
           if (i === j) continue;
           const b = mobs[j];
-          if (b.state === 'grabbed') continue;
-          const opposed = (a.type === 'zombie' && this.isHuman(b)) || (this.isHuman(a) && b.type === 'zombie');
-          if (!opposed) continue;
+          if (!this.isPrey(a, b)) continue;
           const d2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2;
           if (d2 < best) { best = d2; target = b; }
         }
@@ -2212,8 +2229,11 @@
 
         if (a.type === 'zombie') {
           this.hitMob(a, target, 16, 'bite');
-          a.attackCooldown = 28;
-          // Chance to infect a badly wounded human before they fully drop
+          // Multi-hit bite chain: 3 nips, then a short rest. Infection still only after knockout
+          // (or a rare last-gasp chance on a human already near death).
+          if (a.biteChain <= 0) a.biteChain = 3;
+          a.biteChain--;
+          a.attackCooldown = a.biteChain > 0 ? 7 : 26;
           if (this.isHuman(target) && target.hp > 0 && target.hp / target.maxHp < 0.25 && this.rand() < 0.22) {
             this.infectMob(target);
           }
@@ -2241,26 +2261,27 @@
         return;
       }
 
-      // Hunt / fight-back: zombies chase humans, walkers & jumpers fight zombies
+      // Hunt / fight-back: ghouls chase scouts, hoppers and dummies; humans fight ghouls
       if (m.type === 'zombie' || this.isHuman(m)) {
-        let target = null, bestD2 = (m.type === 'zombie' ? 170 : 150) ** 2;
+        const aggro = Math.max(this.width, this.height) + 40;
+        let target = null, bestD2 = aggro * aggro;
         for (const other of this.mobs) {
-          if (other === m) continue;
-          const opposed = (m.type === 'zombie' && this.isHuman(other)) || (this.isHuman(m) && other.type === 'zombie');
-          if (!opposed) continue;
+          if (!this.isPrey(m, other)) continue;
           const d2 = (other.x - m.x) ** 2 + (other.y - m.y) ** 2;
           if (d2 < bestD2) { bestD2 = d2; target = other; }
         }
         if (target) {
           m.facing = target.x >= m.x ? 1 : -1;
           const dist = Math.sqrt(bestD2);
-          const cap = m.type === 'jumper' ? 1.45 : (m.type === 'zombie' ? 1.05 : 1.15);
-          const accel = dist > 13 ? 0.18 : 0.05;
+          const cap = m.type === 'jumper' ? 1.45 : (m.type === 'zombie' ? 1.15 : 1.15);
+          const accel = dist > 13 ? (m.type === 'zombie' ? 0.2 : 0.18) : 0.07;
           m.vx += m.facing * accel;
           m.vx = Math.max(-cap, Math.min(cap, m.vx));
+          m.walkPhase += 0.2;
           if (m.onGround && m.jumpCooldown <= 0) {
             if (target.y < m.y - 10) { m.vy = m.type === 'jumper' ? -3.2 : -2.4; m.jumpCooldown = 24; }
             else if (m.type === 'jumper' && dist < 28 && dist > 12) { m.vy = -3.4; m.jumpCooldown = 20; }
+            else this.tryGapJump(m);
           }
           return;
         }
@@ -2273,14 +2294,42 @@
         if (this.rand() < 0.45) m.facing *= -1;
       }
 
-      const speedCap = m.type === 'jumper' ? 1.35 : 0.9;
-      m.vx += m.facing * 0.13;
+      const speedCap = m.type === 'jumper' ? 1.35 : (m.type === 'zombie' ? 1.05 : 0.9);
+      m.vx += m.facing * (m.type === 'zombie' ? 0.16 : 0.13);
       m.vx = Math.max(-speedCap, Math.min(speedCap, m.vx));
+      m.walkPhase += m.type === 'zombie' ? 0.16 : 0.08;
 
-      if (m.type === 'jumper' && m.onGround && m.jumpCooldown <= 0) {
-        m.vy = -3.1 - this.rand() * 0.8;
-        m.jumpCooldown = 18 + this.randInt(20);
+      if (m.onGround && m.jumpCooldown <= 0) {
+        if (m.type === 'jumper') {
+          m.vy = -3.1 - this.rand() * 0.8;
+          m.jumpCooldown = 18 + this.randInt(20);
+        } else {
+          this.tryGapJump(m);
+        }
       }
+    }
+
+    tryGapJump(m) {
+      if (!m.onGround || m.jumpCooldown > 0) return false;
+      const W = this.width, H = this.height, type = this.type;
+      const mx = Math.max(2, Math.min(W - 3, m.x | 0));
+      const fy = Math.max(2, Math.min(H - 3, m.y | 0));
+      // Must actually be standing on a solid (don't leap from mid-air leftovers)
+      if (!isBlocking(type[fy * W + mx]) && !isBlocking(type[Math.min(H - 1, fy + 1) * W + mx])) return false;
+      const ax = Math.max(2, Math.min(W - 3, (m.x + m.facing * 5) | 0));
+      const ahead = type[fy * W + ax];
+      const down = type[Math.min(H - 1, fy + 1) * W + ax];
+      const down2 = type[Math.min(H - 1, fy + 2) * W + ax];
+      const down3 = type[Math.min(H - 1, fy + 3) * W + ax];
+      const gap = !isBlocking(ahead) && !isBlocking(down);
+      // Need a ledge to land on so we don't hop into the sky or a bottomless pit
+      const landing = isBlocking(down2) || isBlocking(down3) || isBlocking(type[fy * W + Math.max(2, Math.min(W - 3, ax + m.facing * 3))]);
+      if (gap && landing) {
+        m.vy = m.type === 'jumper' ? -3.2 : -2.55;
+        m.jumpCooldown = 20;
+        return true;
+      }
+      return false;
     }
 
     stepFlashes() {

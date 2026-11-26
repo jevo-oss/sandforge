@@ -2,7 +2,7 @@
   'use strict';
 
   const { SandEngine, EL, EL_META } = window.SandForge;
-  window.SANDFORGE_BUILD = 'SANDFORGE_V5';
+  window.SANDFORGE_BUILD = 'SANDFORGE_V5_1';
 
   const TOOLS = {
     tools: [
@@ -870,8 +870,8 @@
       hair: '#1a1a1a', accent: '#67e8f9', outline: '#1a0a12',
     },
     zombie: {
-      skin: '#c4b0c8', skinD: '#9a8aa3', shirt: '#2d3142', shirtD: '#1c1f2a',
-      vest: '#4a5168', vestD: '#2d3142', pants: '#1c1f2a', shoe: '#12141a',
+      skin: '#c4b0c8', skinD: '#9a8aa3', shirt: '#3d4258', shirtD: '#2a2e3e',
+      vest: '#5c6478', vestD: '#3d4258', pants: '#6b5a70', shoe: '#3b3340',
       hair: '#1e1b2e', accent: '#9ff0d0', outline: '#141018',
     },
     dummy: {
@@ -897,16 +897,17 @@
     const hurt = m.hurtFlash > 0;
     const blink = ((engine.tick + m.id * 17) & 127) < 4;
 
-    let walk = flail ? 1 : (moving ? 1 : 0.16);
-    let swingL = Math.sin(phase) * (isHopper ? 3.4 : 2.7) * walk;
-    let swingR = -Math.sin(phase) * (isHopper ? 3.4 : 2.7) * walk;
-    let liftL = Math.max(0, Math.sin(phase)) * (isHopper ? 2.0 : 1.35) * walk;
-    let liftR = Math.max(0, -Math.sin(phase)) * (isHopper ? 2.0 : 1.35) * walk;
+    let walk = flail ? 1 : (moving || isGhoul ? 1 : 0.16);
+    const ghoulAmp = isGhoul ? 1.35 : 1;
+    let swingL = Math.sin(phase) * (isHopper ? 3.4 : 2.7) * walk * (isGhoul ? 1.15 : 1);
+    let swingR = -Math.sin(phase * (isGhoul ? 0.85 : 1)) * (isHopper ? 3.4 : 2.7) * walk * ghoulAmp;
+    let liftL = Math.max(0, Math.sin(phase)) * (isHopper ? 2.0 : 1.35) * walk * (isGhoul ? 0.55 : 1);
+    let liftR = Math.max(0, -Math.sin(phase * (isGhoul ? 0.85 : 1))) * (isHopper ? 2.0 : (isGhoul ? 2.1 : 1.35)) * walk;
     let armL = Math.cos(phase) * 2.4 * walk;
     let armR = -Math.cos(phase) * 2.4 * walk;
-    let bodyY = moving && !flail ? -Math.abs(Math.sin(phase * 2)) * (isHopper ? 0.85 : 0.45) : 0;
+    let bodyY = (moving || isGhoul) && !flail ? -Math.abs(Math.sin(phase * 2)) * (isHopper ? 0.85 : (isGhoul ? 0.7 : 0.45)) : 0;
     let headX = 0, headY = 0;
-    let torsoRot = isGhoul && !flail ? 0.12 : 0;
+    let torsoRot = isGhoul && !flail ? 0.16 + Math.sin(phase) * 0.05 : 0;
 
     if (airborne && !flail && !attacking) {
       swingL = -2.4; swingR = 2.4;
@@ -1011,20 +1012,20 @@
       ctx.strokeStyle = outline;
       ctx.lineWidth = 0.7;
       ctx.beginPath();
-      ctx.moveTo(-2.8, -4.6);
-      ctx.lineTo(2.6, -4.6);
-      ctx.lineTo(3.6, 2.2);
-      ctx.lineTo(1.2, 2.8);
-      ctx.lineTo(0, 1.8);
-      ctx.lineTo(-1.4, 2.9);
-      ctx.lineTo(-3.5, 2.0);
+      ctx.moveTo(-2.6, -4.6);
+      ctx.lineTo(2.5, -4.6);
+      ctx.lineTo(3.1, 0.6);
+      ctx.lineTo(1.4, 1.3);
+      ctx.lineTo(0.2, 0.4);
+      ctx.lineTo(-1.2, 1.35);
+      ctx.lineTo(-3.0, 0.5);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
       ctx.fillStyle = pal.vest;
-      ctx.globalAlpha = 0.45;
+      ctx.globalAlpha = 0.5;
       ctx.beginPath();
-      ctx.moveTo(-1.6, -4.2); ctx.lineTo(1.6, -4.2); ctx.lineTo(1.1, 1.2); ctx.lineTo(-1.2, 1.2);
+      ctx.moveTo(-1.5, -4.2); ctx.lineTo(1.5, -4.2); ctx.lineTo(1.0, 0.4); ctx.lineTo(-1.1, 0.4);
       ctx.fill();
       ctx.globalAlpha = 1;
     } else if (isDummy) {
@@ -1095,10 +1096,12 @@
       const sx = side * (isGhoul ? 2.3 : 2.15), sy = shoulderY;
       let ex, ey, hx, hy;
       if (isGhoul && !attacking && !flail) {
-        ex = 3.2 + side * 0.4;
-        ey = -2.8 + Math.sin(phase + side) * 0.5;
-        hx = 5.4 + side * 0.3;
-        hy = -2.0 - Math.sin(phase + side) * 0.6;
+        // Shambling reach: both arms forward, but they pump with the walk
+        const pump = Math.sin(phase + side * 0.9);
+        ex = 2.4 + side * 0.55 + pump * 0.6;
+        ey = -2.2 + pump * 0.9;
+        hx = 4.6 + side * 0.45 + pump * 1.1;
+        hy = -1.2 - pump * 1.0;
       } else {
         ex = sx + swing * 0.15 * side + side * 0.8;
         ey = sy + armLen * 0.48 + Math.abs(swing) * 0.05;
@@ -2035,7 +2038,7 @@
   populateScenes();
   renderPalette();
   SCENES[0].build();
-  showToast('SandForge V5 — Sharper world, new faces.');
+  showToast('SandForge V5.1 — Ghouls hunt again.');
   window.SandForgeApp = {
     get engine() { return engine; },
     get currentTool() { return currentTool; },
