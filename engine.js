@@ -359,6 +359,7 @@
     }
 
     fireBullet(originX, originY, targetX, targetY) {
+      if (this.bullets.length > 80) this.bullets.shift();
       const dx = targetX - originX, dy = targetY - originY;
       const spread = (this.rand() - 0.5) * 0.14;
       const ang = Math.atan2(dy, dx) + spread;
@@ -382,6 +383,7 @@
     }
 
     fireRocket(originX, originY, targetX, targetY) {
+      if (this.rockets.length > 16) this.rockets.shift();
       const ang = Math.atan2(targetY - originY, targetX - originX);
       const speed = 3.8;
       this.rockets.push({

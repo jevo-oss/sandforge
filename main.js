@@ -2,7 +2,7 @@
   'use strict';
 
   const { SandEngine, EL, EL_META } = window.SandForge;
-  window.SANDFORGE_BUILD = 'SANDFORGE_V5_1';
+  window.SANDFORGE_BUILD = 'SANDFORGE_V5_2';
 
   const TOOLS = {
     tools: [
@@ -581,15 +581,230 @@
   let minigunTick = 0;
   let hoverGrid = null;
 
+  // Hold-to-repeat: fire again at a per-tool rate while the pointer stays down.
+  const HOLD_INTERVAL = {
+    mob: 130,
+    minigun: 33,
+    firework: 200,
+    bomb: 260,
+    rpg: 360,
+    lightning: 300,
+    meteor: 450,
+    tornado: 700,
+    tsunami: 900,
+    earthquake: 900,
+    blackhole: 1100,
+    nuke: 1200,
+    flamethrower: 50,
+  };
+  let holdState = null; // { kind, pointerId, lastFire, count }
+  let holdVel = { x: 0, y: 0 };
+  let holdLastPt = null;
+  let holdLastTime = 0;
+  const holdRateEl = document.getElementById('hold-rate');
+
+  function holdKindForTool(tool) {
+    if (!tool) return null;
+    if (tool.kind === 'element' || tool.id === 'grab') return null;
+    if (tool.kind === 'mob') return 'mob';
+    return HOLD_INTERVAL[tool.id] ? tool.id : null;
+  }
+
+  function holdCanFire(kind) {
+    switch (kind) {
+      case 'mob': return engine.mobs.length < engine.maxMobs;
+      case 'firework': return engine.fireworks.length < 24;
+      case 'bomb': return engine.bombs.length < 28;
+      case 'rpg': return engine.rockets.length < 14;
+      case 'meteor': return engine.meteors.length < 8;
+      case 'lightning': return engine.lightnings.length < 6;
+      case 'nuke': return engine.nukes.length < 2;
+      case 'blackhole': return engine.blackHoles.length < 2;
+      case 'tornado': return engine.tornadoes.length < 5;
+      case 'tsunami': return engine.tsunamis.length < 3;
+      case 'earthquake': return engine.quakeLife < 22;
+      default: return true;
+    }
+  }
+
+  function updateHoldRateChip() {
+    if (!holdRateEl) return;
+    if (!holdState) {
+      holdRateEl.classList.add('hidden');
+      holdRateEl.textContent = '';
+      return;
+    }
+    const interval = HOLD_INTERVAL[holdState.kind] || 200;
+    const rate = 1000 / interval;
+    const label = rate >= 4 ? Math.round(rate) + '/s' : rate.toFixed(1).replace(/\.0$/, '') + '/s';
+    holdRateEl.textContent = label;
+    holdRateEl.classList.remove('hidden');
+  }
+
+  function startHold(kind, pointerId, pt) {
+    const now = performance.now();
+    holdState = { kind, pointerId, lastFire: now, count: 1 };
+    holdLastPt = pt;
+    holdLastTime = now;
+    holdVel = { x: 0, y: 0 };
+    lastGridPt = pt;
+    updateHoldRateChip();
+  }
+
+  function updateHoldPointer(pt, now) {
+    if (holdLastPt) {
+      holdVel = { x: pt.gx - holdLastPt.gx, y: pt.gy - holdLastPt.gy };
+    }
+    holdLastPt = pt;
+    holdLastTime = now || performance.now();
+    lastGridPt = pt;
+    aimCurrent = pt;
+    if (gestureMode === 'aim_bomb' || gestureMode === 'aim_rpg' || gestureMode === 'minigun') {
+      if (!aimStart) aimStart = pt;
+    }
+  }
+
+  function fireHoldTool(kind, pt) {
+    if (!pt) return false;
+    if (!holdCanFire(kind)) return false;
+    switch (kind) {
+      case 'mob':
+        engine.spawnMob(currentTool.mobType, pt.gx, pt.gy);
+        lastMobSpawnPt = pt;
+        lastMobSpawnTime = performance.now();
+        break;
+      case 'firework':
+        engine.spawnFirework(pt.gx, pt.gy);
+        break;
+      case 'bomb': {
+        const vx = Math.max(-8, Math.min(8, holdVel.x * 0.28));
+        const vy = Math.max(-8, Math.min(8, holdVel.y * 0.28));
+        engine.spawnBomb(pt.gx, pt.gy, vx, vy);
+        break;
+      }
+      case 'rpg': {
+        const dist = Math.hypot(holdVel.x, holdVel.y);
+        if (dist > 8) {
+          engine.fireRocket(pt.gx - holdVel.x, pt.gy - holdVel.y, pt.gx, pt.gy);
+        } else {
+          const ox = pt.gx < engine.width * 0.5 ? engine.width * 0.85 : engine.width * 0.15;
+          engine.fireRocket(ox, 10, pt.gx, pt.gy);
+        }
+        break;
+      }
+      case 'tornado':
+        if (activeTornado) activeTornado.controlled = false;
+        activeTornado = engine.spawnTornado(pt.gx, pt.gy, 150);
+        activeTornado.controlled = true;
+        break;
+      case 'tsunami':
+        engine.spawnTsunami(pt.gx < engine.width * 0.5);
+        break;
+      case 'meteor':
+        engine.spawnMeteor(pt.gx, pt.gy);
+        break;
+      case 'lightning':
+        engine.spawnLightning(pt.gx, pt.gy);
+        break;
+      case 'blackhole':
+        if (activeBlackHole) {
+          activeBlackHole.controlled = false;
+          activeBlackHole.life = Math.min(activeBlackHole.life, 70);
+        }
+        activeBlackHole = engine.spawnBlackHole(pt.gx, pt.gy, 95);
+        activeBlackHole.controlled = true;
+        break;
+      case 'nuke':
+        engine.spawnNuke(pt.gx, pt.gy);
+        break;
+      case 'earthquake':
+        engine.spawnEarthquake();
+        break;
+      default:
+        return false;
+    }
+    return true;
+  }
+
+  function tickHoldRepeat(now) {
+    if (!holdState) return;
+    const kind = holdState.kind;
+    const interval = HOLD_INTERVAL[kind];
+    if (!interval || kind === 'minigun' || kind === 'flamethrower') {
+      updateHoldRateChip();
+      return;
+    }
+    if (now - holdState.lastFire < interval) return;
+    const pt = holdLastPt || lastGridPt || aimCurrent;
+    if (fireHoldTool(kind, pt)) {
+      holdState.lastFire = now;
+      holdState.count++;
+      updateHoldRateChip();
+    }
+  }
+
+  function stopHold() {
+    holdState = null;
+    holdVel = { x: 0, y: 0 };
+    updateHoldRateChip();
+  }
+
+  function isClientOnCanvas(clientX, clientY, pad = 2) {
+    const r = canvas.getBoundingClientRect();
+    return clientX >= r.left - pad && clientX <= r.right + pad && clientY >= r.top - pad && clientY <= r.bottom + pad;
+  }
+
   function getTwoPointers() {
     const pts = Array.from(activePointers.values());
     return pts.length >= 2 ? [pts[0], pts[1]] : null;
   }
 
+  function endSteeredEffects() {
+    if (gestureMode === 'grab') engine.endGrab();
+    if (activeTornado) {
+      activeTornado.controlled = false;
+      activeTornado.life = 135;
+      activeTornado = null;
+    }
+    if (activeBlackHole) {
+      activeBlackHole.controlled = false;
+      activeBlackHole.life = Math.min(activeBlackHole.life, 70);
+      activeBlackHole = null;
+    }
+  }
+
+  function resetIdleGesture() {
+    if (activePointers.size === 0) {
+      gestureMode = null;
+      aimStart = null;
+      aimCurrent = null;
+      lastGridPt = null;
+      panLast = null;
+      pinchLast = null;
+    }
+  }
+
+  function cancelHoldGesture(e) {
+    const pid = e && e.pointerId;
+    const wasHold = !holdState || holdState.pointerId === pid || activePointers.size <= 1;
+    if (wasHold) {
+      endSteeredEffects();
+      stopHold();
+    }
+    if (e) activePointers.delete(e.pointerId);
+    resetIdleGesture();
+  }
+
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  canvas.addEventListener('selectstart', (e) => e.preventDefault());
+  canvas.addEventListener('dragstart', (e) => e.preventDefault());
+  // iPhone: block long-press callouts / magnifier / scroll without breaking pointer events.
+  canvas.addEventListener('touchstart', (e) => { e.preventDefault(); }, { passive: false });
+  canvas.addEventListener('touchmove', (e) => { e.preventDefault(); }, { passive: false });
 
   canvas.addEventListener('pointerdown', (e) => {
-    canvas.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
     activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY, button: e.button });
 
     // Right or middle mouse drag pans
@@ -599,11 +814,10 @@
       return;
     }
 
-    // Two fingers -> pinch zoom + pan
+    // Two fingers -> pinch zoom + pan, and cancel any hold-to-repeat
     if (activePointers.size === 2) {
-      if (gestureMode === 'grab') engine.endGrab();
-      if (activeTornado) { activeTornado.controlled = false; activeTornado = null; }
-      if (activeBlackHole) { activeBlackHole.controlled = false; activeBlackHole = null; }
+      endSteeredEffects();
+      stopHold();
       gestureMode = 'panzoom';
       const [p1, p2] = getTwoPointers();
       pinchLast = {
@@ -629,6 +843,7 @@
       engine.spawnMob(currentTool.mobType, pt.gx, pt.gy);
       lastMobSpawnPt = pt;
       lastMobSpawnTime = performance.now();
+      startHold('mob', e.pointerId, pt);
     } else if (currentTool.id === 'grab') {
       gestureMode = 'grab';
       const grabbed = engine.startGrab(pt.gx, pt.gy, isTouch ? 20 : 14);
@@ -640,46 +855,60 @@
       gestureMode = 'aim_bomb';
       aimStart = pt;
       aimCurrent = pt;
+      fireHoldTool('bomb', pt);
+      startHold('bomb', e.pointerId, pt);
     } else if (currentTool.id === 'rpg') {
       gestureMode = 'aim_rpg';
       aimStart = pt;
       aimCurrent = pt;
+      fireHoldTool('rpg', pt);
+      startHold('rpg', e.pointerId, pt);
     } else if (currentTool.id === 'minigun') {
       gestureMode = 'minigun';
       aimCurrent = pt;
       aimStart = pt;
       minigunTick = 0;
+      startHold('minigun', e.pointerId, pt);
     } else if (currentTool.id === 'firework') {
       gestureMode = 'firework';
       engine.spawnFirework(pt.gx, pt.gy);
+      startHold('firework', e.pointerId, pt);
     } else if (currentTool.id === 'tornado') {
       gestureMode = 'tornado';
       activeTornado = engine.spawnTornado(pt.gx, pt.gy, 150);
       activeTornado.controlled = true;
+      startHold('tornado', e.pointerId, pt);
     } else if (currentTool.id === 'tsunami') {
       gestureMode = 'tsunami';
       engine.spawnTsunami(pt.gx < engine.width * 0.5);
+      startHold('tsunami', e.pointerId, pt);
     } else if (currentTool.id === 'meteor') {
       gestureMode = 'meteor';
       engine.spawnMeteor(pt.gx, pt.gy);
+      startHold('meteor', e.pointerId, pt);
     } else if (currentTool.id === 'lightning') {
       gestureMode = 'lightning';
       engine.spawnLightning(pt.gx, pt.gy);
+      startHold('lightning', e.pointerId, pt);
     } else if (currentTool.id === 'blackhole') {
       gestureMode = 'blackhole';
       activeBlackHole = engine.spawnBlackHole(pt.gx, pt.gy, 95);
       activeBlackHole.controlled = true;
+      startHold('blackhole', e.pointerId, pt);
     } else if (currentTool.id === 'nuke') {
       gestureMode = 'nuke';
       engine.spawnNuke(pt.gx, pt.gy);
+      startHold('nuke', e.pointerId, pt);
     } else if (currentTool.id === 'earthquake') {
       gestureMode = 'earthquake';
       engine.spawnEarthquake();
+      startHold('earthquake', e.pointerId, pt);
     } else if (currentTool.id === 'flamethrower') {
       gestureMode = 'flamethrower';
       lastGridPt = pt;
       flameDir = { x: 0, y: -1 };
       engine.sprayFlamethrower(pt.gx, pt.gy, 0, -1);
+      startHold('flamethrower', e.pointerId, pt);
     }
 
     if (currentTool.kind !== 'element' || currentTool.id === 'eraser') {
@@ -687,22 +916,22 @@
       const useHints = {
         grab: 'Grab & throw — drag a mob or scoop sand!',
         minigun: 'Minigun — hold to fire!',
-        rpg: 'RPG — drag to aim, release to launch',
-        bomb: 'Bomb — drag to throw, release to light it',
-        firework: 'Firework launched!',
-        tornado: 'Tornado — drag to steer the funnel',
-        tsunami: 'Tsunami incoming!',
-        meteor: 'Meteor incoming!',
-        lightning: 'Lightning strike!',
-        blackhole: 'Black hole — hold to steer, then it collapses',
-        nuke: 'Nuke launched!',
-        earthquake: 'Earthquake!',
+        rpg: 'RPG — hold to launch, drag to aim',
+        bomb: 'Bomb — hold to drop more, drag to throw',
+        firework: 'Firework — hold to keep launching',
+        tornado: 'Tornado — hold to spawn more, drag to steer',
+        tsunami: 'Tsunami — hold for another wave',
+        meteor: 'Meteor — hold to keep calling them in',
+        lightning: 'Lightning — hold to keep striking',
+        blackhole: 'Black hole — hold to spawn more, drag to steer',
+        nuke: 'Nuke — hold for another launch',
+        earthquake: 'Earthquake — hold to keep shaking',
         flamethrower: 'Flamethrower — drag to spray fire',
         eraser: 'Erasing',
-        mob_walker: 'Scout spawned',
-        mob_jumper: 'Hopper spawned',
-        mob_zombie: 'Ghoul spawned — the living will fight back',
-        mob_dummy: 'Dummy spawned',
+        mob_walker: 'Scout — hold to keep spawning',
+        mob_jumper: 'Hopper — hold to keep spawning',
+        mob_zombie: 'Ghoul — hold to keep spawning',
+        mob_dummy: 'Dummy — hold to keep spawning',
       };
       if (useHints[currentTool.id]) showToast(useHints[currentTool.id]);
     }
@@ -714,6 +943,12 @@
     }
     const pt = screenToGrid(e.clientX, e.clientY);
     hoverGrid = pt;
+
+    // Leaving the canvas ends a hold even if the pointer is captured.
+    if (holdState && holdState.pointerId === e.pointerId && !isClientOnCanvas(e.clientX, e.clientY)) {
+      cancelHoldGesture(e);
+      return;
+    }
 
     if (gestureMode === 'pan' && panLast) {
       cam.panX += e.clientX - panLast.x;
@@ -740,17 +975,15 @@
 
     if (activePointers.size !== 1 || !activePointers.has(e.pointerId)) return;
 
+    if (holdState && holdState.pointerId === e.pointerId) {
+      updateHoldPointer(pt, performance.now());
+    }
+
     if (gestureMode === 'draw' && lastGridPt) {
       engine.paintLine(lastGridPt.gx, lastGridPt.gy, pt.gx, pt.gy, brushSize, currentTool.el, false);
       lastGridPt = pt;
     } else if (gestureMode === 'mob') {
-      const now = performance.now();
-      const moved = lastMobSpawnPt ? Math.hypot(pt.gx - lastMobSpawnPt.gx, pt.gy - lastMobSpawnPt.gy) : 999;
-      if (now - lastMobSpawnTime > 170 && moved > 14) {
-        engine.spawnMob(currentTool.mobType, pt.gx, pt.gy);
-        lastMobSpawnPt = pt;
-        lastMobSpawnTime = now;
-      }
+      lastGridPt = pt;
     } else if (gestureMode === 'grab') {
       engine.moveGrab(pt.gx, pt.gy);
     } else if (gestureMode === 'scoop' && lastGridPt) {
@@ -775,46 +1008,30 @@
   });
 
   function handlePointerUp(e) {
-    activePointers.delete(e.pointerId);
-
-    if (gestureMode === 'grab') engine.endGrab();
-    if (gestureMode === 'aim_bomb' && aimStart && aimCurrent) {
-      const dx = (aimCurrent.gx - aimStart.gx) * 0.28;
-      const dy = (aimCurrent.gy - aimStart.gy) * 0.28;
-      engine.spawnBomb(aimStart.gx, aimStart.gy, Math.max(-8, Math.min(8, dx)), Math.max(-8, Math.min(8, dy)));
-    }
-    if (gestureMode === 'aim_rpg' && aimStart && aimCurrent) {
-      const dist = Math.hypot(aimCurrent.gx - aimStart.gx, aimCurrent.gy - aimStart.gy);
-      if (dist > 8) {
-        engine.fireRocket(aimStart.gx, aimStart.gy, aimCurrent.gx, aimCurrent.gy);
-      } else {
-        const ox = aimCurrent.gx < engine.width * 0.5 ? engine.width * 0.85 : engine.width * 0.15;
-        engine.fireRocket(ox, 10, aimCurrent.gx, aimCurrent.gy);
+    if (gestureMode === 'panzoom') {
+      activePointers.delete(e.pointerId);
+      if (activePointers.size < 2) pinchLast = null;
+      if (activePointers.size === 0) {
+        gestureMode = null;
+        panLast = null;
+        pinchLast = null;
       }
-    }
-    if (gestureMode === 'tornado' && activeTornado) {
-      activeTornado.controlled = false;
-      activeTornado.life = 135;
-      activeTornado = null;
-    }
-    if (gestureMode === 'blackhole' && activeBlackHole) {
-      activeBlackHole.controlled = false;
-      activeBlackHole.life = Math.min(activeBlackHole.life, 70);
-      activeBlackHole = null;
+      return;
     }
 
-    if (activePointers.size === 0) {
-      gestureMode = null;
-      aimStart = null;
-      aimCurrent = null;
-      lastGridPt = null;
-      panLast = null;
-      pinchLast = null;
-    }
+    cancelHoldGesture(e);
   }
 
   canvas.addEventListener('pointerup', handlePointerUp);
   canvas.addEventListener('pointercancel', handlePointerUp);
+  canvas.addEventListener('lostpointercapture', (e) => {
+    if (holdState && holdState.pointerId === e.pointerId) handlePointerUp(e);
+  });
+  canvas.addEventListener('pointerleave', (e) => {
+    if (holdState && holdState.pointerId === e.pointerId && !isClientOnCanvas(e.clientX, e.clientY)) {
+      handlePointerUp(e);
+    }
+  });
 
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
@@ -1966,6 +2183,7 @@
   function loop(now) {
     const dt = Math.min(50, now - lastTime);
     lastTime = now;
+    tickHoldRepeat(now);
 
     if (!paused) {
       acc += (dt / 16.6667) * speedMul;
@@ -1979,6 +2197,10 @@
             const ox = aimCurrent.gx + Math.cos(ang) * 42;
             const oy = Math.max(4, aimCurrent.gy - 35 + Math.sin(ang) * 14);
             engine.fireBullet(ox, oy, aimCurrent.gx, aimCurrent.gy);
+            if (holdState && holdState.kind === 'minigun') {
+              holdState.count++;
+              holdState.lastFire = performance.now();
+            }
           }
         }
         if (gestureMode === 'flamethrower' && lastGridPt) {
@@ -2038,11 +2260,27 @@
   populateScenes();
   renderPalette();
   SCENES[0].build();
-  showToast('SandForge V5.1 — Ghouls hunt again.');
+  showToast('SandForge V5.2 — Hold to spam.');
+  function selectToolById(id) {
+    for (const [cat, list] of Object.entries(TOOLS)) {
+      const item = list.find((x) => x.id === id);
+      if (!item) continue;
+      currentCat = cat;
+      currentTool = item;
+      catTabsEl.querySelectorAll('.cat-tab').forEach((b) => b.classList.toggle('active', b.dataset.cat === cat));
+      renderPalette();
+      return true;
+    }
+    return false;
+  }
+
   window.SandForgeApp = {
     get engine() { return engine; },
     get currentTool() { return currentTool; },
     get currentCat() { return currentCat; },
+    get holdActive() { return !!holdState; },
+    get holdCount() { return holdState ? holdState.count : 0; },
+    selectTool: selectToolById,
   };
   requestAnimationFrame(loop);
 })();
