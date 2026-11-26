@@ -2,7 +2,7 @@
   'use strict';
 
   const { SandEngine, EL, EL_META } = window.SandForge;
-  window.SANDFORGE_BUILD = 'SANDFORGE_V4_SMOOTH';
+  window.SANDFORGE_BUILD = 'SANDFORGE_V5';
 
   const TOOLS = {
     tools: [
@@ -22,10 +22,10 @@
       { id: 'eraser',       name: 'Eraser',        icon: 'eraser', kind: 'element', el: EL.EMPTY, hint: 'Erase cells, mobs, and bombs' },
     ],
     mobs: [
-      { id: 'mob_walker', name: 'Walker',      icon: 'walker', kind: 'mob', mobType: 'walker', hint: 'Tap to spawn stick dudes that walk, climb & swim' },
-      { id: 'mob_jumper', name: 'Jumper',      icon: 'jumper', kind: 'mob', mobType: 'jumper', hint: 'Bouncy stick jumpers that leap over terrain' },
-      { id: 'mob_zombie', name: 'Zombie',      icon: 'zombie', kind: 'mob', mobType: 'zombie', hint: 'Hunts humans — they fight back! Bites hurt; infection only after a knockout' },
-      { id: 'mob_dummy',  name: 'Crash Dummy', icon: 'dummy', kind: 'mob', mobType: 'dummy',  hint: 'Extra-bouncy ragdoll target dummy' },
+      { id: 'mob_walker', name: 'Scout',  icon: 'walker', kind: 'mob', mobType: 'walker', hint: 'Tap to spawn a scout — walks, climbs, swims, and will fight back' },
+      { id: 'mob_jumper', name: 'Hopper', icon: 'jumper', kind: 'mob', mobType: 'jumper', hint: 'A springy athlete that leaps over terrain' },
+      { id: 'mob_zombie', name: 'Ghoul',  icon: 'zombie', kind: 'mob', mobType: 'zombie', hint: 'Stylized undead that hunts the living — infection only after a knockout' },
+      { id: 'mob_dummy',  name: 'Dummy',  icon: 'dummy', kind: 'mob', mobType: 'dummy',  hint: 'Articulated crash-test figure — extra bouncy ragdoll target' },
     ],
     solids: [
       EL.SAND, EL.STONE, EL.WOOD, EL.METAL, EL.ICE, EL.GLASS,
@@ -113,6 +113,34 @@
   const fluidCtx = fluidCanvas.getContext('2d', { alpha: true });
   const fluidData = fluidCtx.createImageData(engine.width, engine.height);
   const fluidU32 = new Uint32Array(fluidData.data.buffer);
+
+  const hiSolidCanvas = document.createElement('canvas');
+  const hiFluidCanvas = document.createElement('canvas');
+  let hiSolidCtx = null, hiFluidCtx = null, hiSolidData = null, hiSolidU32 = null, hiFluidData = null, hiFluidU32 = null;
+  function syncHiCanvases() {
+    const w = engine.hiW, h = engine.hiH;
+    if (!w || (hiSolidCanvas.width === w && hiSolidU32)) return;
+    hiSolidCanvas.width = w; hiSolidCanvas.height = h;
+    hiFluidCanvas.width = w; hiFluidCanvas.height = h;
+    hiSolidCtx = hiSolidCanvas.getContext('2d', { alpha: true });
+    hiFluidCtx = hiFluidCanvas.getContext('2d', { alpha: true });
+    hiSolidData = hiSolidCtx.createImageData(w, h);
+    hiSolidU32 = new Uint32Array(hiSolidData.data.buffer);
+    hiFluidData = hiFluidCtx.createImageData(w, h);
+    hiFluidU32 = new Uint32Array(hiFluidData.data.buffer);
+  }
+
+  const SKY_STARS = new Array(72);
+  for (let i = 0; i < SKY_STARS.length; i++) {
+    const n1 = Math.sin(i * 12.9898 + 78.23) * 43758.5453;
+    const n2 = Math.sin(i * 4.1414 + 19.19) * 23421.631;
+    SKY_STARS[i] = {
+      x: n1 - Math.floor(n1),
+      y: (n2 - Math.floor(n2)) * 0.62,
+      r: 0.5 + (i % 5) * 0.28,
+      p: i * 0.73,
+    };
+  }
 
   function makeGlowSprite(radius, stops) {
     const sz = radius * 2;
@@ -349,7 +377,7 @@
   const SCENES = [
     {
       name: 'TNT Village & Mobs',
-      desc: 'Wood bridge, TNT bunker, pond, plants & lively stick dudes',
+      desc: 'Wood bridge, TNT bunker, pond, plants and a lively scout camp',
       build() {
         engine.clear();
         const W = engine.width, H = engine.height;
@@ -671,10 +699,10 @@
         earthquake: 'Earthquake!',
         flamethrower: 'Flamethrower — drag to spray fire',
         eraser: 'Erasing',
-        mob_walker: 'Walker spawned',
-        mob_jumper: 'Jumper spawned',
-        mob_zombie: 'Zombie spawned — humans will fight back',
-        mob_dummy: 'Crash dummy spawned',
+        mob_walker: 'Scout spawned',
+        mob_jumper: 'Hopper spawned',
+        mob_zombie: 'Ghoul spawned — the living will fight back',
+        mob_dummy: 'Dummy spawned',
       };
       if (useHints[currentTool.id]) showToast(useHints[currentTool.id]);
     }
@@ -804,7 +832,7 @@
   }, { passive: false });
 
   // Vector Overlay Drawing (Mobs, Bombs, Weapons, Disasters, Reticle)
-  function limb(ctx, x1, y1, x2, y2, width, color, outline) {
+  function bone(ctx, x1, y1, x2, y2, width, color, outline) {
     ctx.lineCap = 'round';
     ctx.strokeStyle = outline;
     ctx.lineWidth = width + 1.15;
@@ -820,222 +848,403 @@
     ctx.stroke();
   }
 
+  function joint(ctx, x, y, r, fill, outline) {
+    ctx.fillStyle = fill;
+    ctx.strokeStyle = outline;
+    ctx.lineWidth = 0.35;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
   const MOB_PAL = {
-    walker: { skin: '#f0c7a0', shirt: '#3b82f6', shirtD: '#1d4ed8', pants: '#1e3a5f', shoe: '#0f172a', hair: '#1e293b', accent: '#93c5fd', outline: '#0b1220' },
-    jumper: { skin: '#ffd7b3', shirt: '#a3e635', shirtD: '#4d7c0f', pants: '#365314', shoe: '#f8fafc', hair: '#3f6212', accent: '#ecfccb', outline: '#14200a' },
-    zombie: { skin: '#c6e89a', shirt: '#8a5a3c', shirtD: '#5a3a24', pants: '#4a4638', shoe: '#1c1917', hair: '#4a5c38', accent: '#14532d', outline: '#1a2410' },
-    dummy:  { skin: '#fb923c', shirt: '#f97316', shirtD: '#c2410c', pants: '#ea580c', shoe: '#7c2d12', hair: '#7c2d12', accent: '#0f172a', outline: '#1c0a00' },
+    walker: {
+      skin: '#f3c7a0', skinD: '#d9a57c', shirt: '#f3e0c8', shirtD: '#e2c8a4',
+      vest: '#c45c3a', vestD: '#8f3a24', pants: '#4a3426', shoe: '#2a1c14',
+      hair: '#4a2f1c', accent: '#2a9d8f', outline: '#2a1a12',
+    },
+    jumper: {
+      skin: '#ffd0a8', skinD: '#e2ae80', shirt: '#e23e6e', shirtD: '#be185d',
+      vest: '#e23e6e', vestD: '#9d174d', pants: '#164e63', shoe: '#e0f2fe',
+      hair: '#1a1a1a', accent: '#67e8f9', outline: '#1a0a12',
+    },
+    zombie: {
+      skin: '#c4b0c8', skinD: '#9a8aa3', shirt: '#2d3142', shirtD: '#1c1f2a',
+      vest: '#4a5168', vestD: '#2d3142', pants: '#1c1f2a', shoe: '#12141a',
+      hair: '#1e1b2e', accent: '#9ff0d0', outline: '#141018',
+    },
+    dummy: {
+      skin: '#efe6d6', skinD: '#d4cbb8', shirt: '#efe6d6', shirtD: '#d4cbb8',
+      vest: '#eab308', vestD: '#a16207', pants: '#efe6d6', shoe: '#3f3f46',
+      hair: '#27272a', accent: '#27272a', outline: '#292524',
+    },
   };
 
   function drawStickMob(ctx, m) {
     const pal = MOB_PAL[m.type] || MOB_PAL.walker;
-    const flail = (m.state === 'ragdoll' || m.state === 'grabbed' || m.burnTimer > 0);
-    const attacking = m.attackTimer > 0;
+    const flail = (m.state === 'ragdoll' || m.state === 'grabbed' || m.burnTimer > 0 || m.dying > 0);
+    const attacking = m.attackTimer > 0 && !flail;
     const phase = m.walkPhase;
     const moving = Math.abs(m.vx) > 0.12;
     const airborne = !m.onGround && m.state !== 'grabbed';
     const face = m.facing >= 0 ? 1 : -1;
+    const isHopper = m.type === 'jumper';
+    const isGhoul = m.type === 'zombie';
+    const isDummy = m.type === 'dummy';
+    const isScout = m.type === 'walker';
+    const dying = Math.max(0, Math.min(1, (18 - (m.dying || 0)) / 18)) * (m.hp <= 0 ? 1 : 0);
+    const hurt = m.hurtFlash > 0;
+    const blink = ((engine.tick + m.id * 17) & 127) < 4;
 
-    let walk = flail ? 1 : (moving ? 1 : 0.18);
-    let legL = Math.sin(phase) * 2.6 * walk;
-    let legR = -Math.sin(phase) * 2.6 * walk;
-    let armL = Math.cos(phase) * 2.2 * walk;
-    let armR = -Math.cos(phase) * 2.2 * walk;
-    let bodyY = 0;
+    let walk = flail ? 1 : (moving ? 1 : 0.16);
+    let swingL = Math.sin(phase) * (isHopper ? 3.4 : 2.7) * walk;
+    let swingR = -Math.sin(phase) * (isHopper ? 3.4 : 2.7) * walk;
+    let liftL = Math.max(0, Math.sin(phase)) * (isHopper ? 2.0 : 1.35) * walk;
+    let liftR = Math.max(0, -Math.sin(phase)) * (isHopper ? 2.0 : 1.35) * walk;
+    let armL = Math.cos(phase) * 2.4 * walk;
+    let armR = -Math.cos(phase) * 2.4 * walk;
+    let bodyY = moving && !flail ? -Math.abs(Math.sin(phase * 2)) * (isHopper ? 0.85 : 0.45) : 0;
     let headX = 0, headY = 0;
+    let torsoRot = isGhoul && !flail ? 0.12 : 0;
 
     if (airborne && !flail && !attacking) {
-      // Jump tuck
-      legL = -2.2; legR = 2.2;
-      armL = -2.8; armR = 2.8;
-      bodyY = -0.8;
+      swingL = -2.4; swingR = 2.4;
+      liftL = 1.6; liftR = 1.6;
+      armL = -3.2; armR = 3.2;
+      bodyY = -1.1;
     }
-
     if (flail) {
-      legL = Math.sin(phase * 1.9) * 3.6;
-      legR = Math.cos(phase * 1.7) * 3.6;
-      armL = Math.cos(phase * 2.1) * 4.4;
-      armR = Math.sin(phase * 1.8) * 4.4;
+      swingL = Math.sin(phase * 1.9) * 4.2;
+      swingR = Math.cos(phase * 1.7) * 4.2;
+      liftL = 1.4; liftR = 1.2;
+      armL = Math.cos(phase * 2.1) * 5.0;
+      armR = Math.sin(phase * 1.8) * 5.0;
+      torsoRot += Math.sin(phase * 1.4) * 0.15;
     }
-
-    // Attack poses
-    if (attacking && !flail) {
-      const t = m.attackTimer / 14;
-      const reach = 2.5 + (1 - t) * 3.5;
+    if (attacking) {
+      const reach = 3.2 + (1 - m.attackTimer / 14) * 3.8;
       if (m.attackStyle === 'punch' || m.attackStyle === 'shove') {
-        armR = face * reach; if (m.attackStyle === 'shove') armL = face * (reach - 1);
+        armR = face * reach; if (m.attackStyle === 'shove') armL = face * (reach - 1.2);
       } else if (m.attackStyle === 'kick') {
-        legR = face * reach * 0.9;
+        swingR = face * reach * 0.85; liftR = 1.2;
       } else if (m.attackStyle === 'stomp') {
-        bodyY = 1.6; legL = -1.4; legR = 1.4;
+        bodyY = 1.8; swingL = -1.6; swingR = 1.6; liftL = 0; liftR = 2.2;
       } else if (m.attackStyle === 'bite') {
-        headX = face * 2.2; headY = 0.6;
-        armL = face * 3.4; armR = face * 3.8;
+        headX = 2.4; headY = 0.8;
+        armL = 4.0; armR = 4.4;
       }
     }
+    if (dying > 0) {
+      torsoRot += dying * 0.9;
+      bodyY += dying * 2.2;
+      swingL *= 1 - dying * 0.5; swingR *= 1 - dying * 0.5;
+      liftL = dying * 2; liftR = dying * 1.6;
+      armL = dying * -2; armR = dying * 3;
+      headY += dying * 1.4;
+    }
+
+    const legLen = isHopper ? 6.3 : (isGhoul ? 5.4 : 5.05);
+    const armLen = isGhoul ? 6.2 : 4.8;
 
     ctx.save();
     ctx.translate(m.x, m.y - 6 + bodyY);
-    ctx.rotate(m.angle);
-    ctx.scale(face * 1.12, 1.12);
+    ctx.rotate(m.angle + (dying * 0.5 * face));
+    ctx.scale(face * 1.16, 1.16);
 
     const outline = pal.outline;
-    let shirt = pal.shirt, skin = pal.skin, pants = pal.pants;
 
-    // Shadow
+    // Ground shadow
     ctx.fillStyle = 'rgba(0,0,0,0.28)';
     ctx.beginPath();
-    ctx.ellipse(0, 6.4, 4.2, 1.15, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 6.6 + (airborne ? 1.2 : 0), airborne ? 3.2 : 4.4, 1.15, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Legs
-    const footY = 6.2;
-    limb(ctx, -1.3, 1.6, -1.5 + legL * 0.15, footY + (airborne ? -0.6 : 0), 2.15, pants, outline);
-    limb(ctx,  1.3, 1.6,  1.5 + legR * 0.15, footY + (airborne ? -0.6 : 0), 2.15, pants, outline);
-    // Shoes
-    ctx.fillStyle = pal.shoe;
-    ctx.beginPath(); ctx.ellipse(-1.5 + legL * 0.15 + 0.6, footY + 0.15, 1.7, 0.7, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse( 1.5 + legR * 0.15 + 0.6, footY + 0.15, 1.7, 0.7, 0, 0, Math.PI * 2); ctx.fill();
+    const drawLeg = (side, swing, lift) => {
+      const hipX = side * 1.35, hipY = 1.55;
+      const kneeX = hipX + swing * 0.5;
+      const kneeY = hipY + legLen * 0.5 - lift;
+      const footX = hipX + swing + 0.35;
+      const footY = hipY + legLen - lift * 0.12;
+      const col = isDummy ? pal.skin : pal.pants;
+      bone(ctx, hipX, hipY, kneeX, kneeY, isHopper ? 1.85 : 2.05, col, outline);
+      bone(ctx, kneeX, kneeY, footX, footY, isHopper ? 1.65 : 1.85, col, outline);
+      if (isDummy) {
+        joint(ctx, hipX, hipY, 0.85, pal.shoe, outline);
+        joint(ctx, kneeX, kneeY, 0.75, pal.shoe, outline);
+      }
+      if (isHopper) {
+        // Knee pad
+        ctx.fillStyle = pal.accent;
+        ctx.beginPath(); ctx.ellipse(kneeX, kneeY, 1.15, 0.95, 0, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.fillStyle = pal.shoe;
+      ctx.beginPath();
+      ctx.ellipse(footX + 0.55, footY + 0.1, isHopper ? 1.85 : 1.65, 0.7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = outline;
+      ctx.lineWidth = 0.35;
+      ctx.stroke();
+    };
+    drawLeg(-1, swingL, liftL);
+    drawLeg(1, swingR, liftR);
+
+    // Backpack (scout) — drawn behind the torso
+    if (isScout) {
+      ctx.fillStyle = pal.vestD;
+      ctx.strokeStyle = outline;
+      ctx.lineWidth = 0.6;
+      ctx.beginPath();
+      ctx.roundRect(-3.6, -4.0, 1.8, 4.2, 0.7);
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // Ghoul stoop
+    ctx.save();
+    ctx.rotate(torsoRot);
 
     // Torso
     ctx.lineJoin = 'round';
-    ctx.fillStyle = shirt;
-    ctx.strokeStyle = outline;
-    ctx.lineWidth = 0.7;
-    ctx.beginPath();
-    ctx.roundRect(-2.5, -4.6, 5, 6.4, 1.5);
-    ctx.fill();
-    ctx.stroke();
-    // Belly shade
-    ctx.fillStyle = pal.shirtD;
-    ctx.globalAlpha = 0.35;
-    ctx.beginPath();
-    ctx.roundRect(-2.0, -0.4, 4, 2.0, 1);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-
-    if (m.type === 'dummy') {
-      ctx.strokeStyle = '#0f172a';
-      ctx.lineWidth = 0.9;
+    if (isGhoul) {
+      ctx.fillStyle = pal.shirt;
+      ctx.strokeStyle = outline;
+      ctx.lineWidth = 0.7;
       ctx.beginPath();
-      ctx.moveTo(-1.5, -3.4); ctx.lineTo(1.5, 0.6);
-      ctx.moveTo(1.5, -3.4); ctx.lineTo(-1.5, 0.6);
-      ctx.stroke();
-    } else if (m.type === 'zombie') {
-      // Torn hem
-      ctx.fillStyle = pal.shirtD;
-      ctx.beginPath();
-      ctx.moveTo(-2.4, 1.4); ctx.lineTo(-1.2, 2.4); ctx.lineTo(0, 1.4); ctx.lineTo(1.1, 2.3); ctx.lineTo(2.4, 1.4);
+      ctx.moveTo(-2.8, -4.6);
+      ctx.lineTo(2.6, -4.6);
+      ctx.lineTo(3.6, 2.2);
+      ctx.lineTo(1.2, 2.8);
+      ctx.lineTo(0, 1.8);
+      ctx.lineTo(-1.4, 2.9);
+      ctx.lineTo(-3.5, 2.0);
+      ctx.closePath();
       ctx.fill();
-    } else if (m.type === 'walker') {
-      // Hoodie pocket
-      ctx.strokeStyle = pal.accent;
-      ctx.lineWidth = 0.6;
-      ctx.strokeRect(-1.5, -0.6, 3, 1.6);
-    } else if (m.type === 'jumper') {
-      // Chest stripe
+      ctx.stroke();
+      ctx.fillStyle = pal.vest;
+      ctx.globalAlpha = 0.45;
+      ctx.beginPath();
+      ctx.moveTo(-1.6, -4.2); ctx.lineTo(1.6, -4.2); ctx.lineTo(1.1, 1.2); ctx.lineTo(-1.2, 1.2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    } else if (isDummy) {
+      ctx.fillStyle = pal.skin;
+      ctx.strokeStyle = outline;
+      ctx.lineWidth = 0.7;
+      ctx.beginPath();
+      ctx.roundRect(-2.4, -4.7, 4.8, 6.2, 1.3);
+      ctx.fill();
+      ctx.stroke();
+      // Safety vest
+      ctx.fillStyle = pal.vest;
+      ctx.beginPath();
+      ctx.roundRect(-2.5, -3.2, 5, 3.6, 0.6);
+      ctx.fill();
       ctx.fillStyle = pal.accent;
-      ctx.fillRect(-2.4, -2.2, 4.8, 0.7);
+      ctx.fillRect(-2.5, -2.5, 5, 0.55);
+      ctx.fillRect(-2.5, -0.6, 5, 0.55);
+    } else if (isHopper) {
+      ctx.fillStyle = pal.shirt;
+      ctx.strokeStyle = outline;
+      ctx.lineWidth = 0.7;
+      ctx.beginPath();
+      ctx.roundRect(-2.3, -4.7, 4.6, 5.4, 1.6);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = pal.shirtD;
+      ctx.globalAlpha = 0.35;
+      ctx.beginPath(); ctx.roundRect(-1.8, -1.0, 3.6, 1.4, 0.8); ctx.fill();
+      ctx.globalAlpha = 1;
+    } else {
+      // Scout: cream shirt + terracotta vest
+      ctx.fillStyle = pal.shirt;
+      ctx.strokeStyle = outline;
+      ctx.lineWidth = 0.7;
+      ctx.beginPath();
+      ctx.roundRect(-2.4, -4.7, 4.8, 6.2, 1.4);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = pal.vest;
+      ctx.beginPath();
+      ctx.moveTo(-2.4, -4.4);
+      ctx.lineTo(-0.3, -4.4);
+      ctx.lineTo(-0.15, 1.2);
+      ctx.lineTo(-2.4, 1.2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(2.4, -4.4);
+      ctx.lineTo(0.3, -4.4);
+      ctx.lineTo(0.15, 1.2);
+      ctx.lineTo(2.4, 1.2);
+      ctx.closePath();
+      ctx.fill();
+      // Teal scarf
+      ctx.fillStyle = pal.accent;
+      ctx.beginPath();
+      ctx.ellipse(0, -4.55, 2.1, 0.7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(0.6, -4.2); ctx.lineTo(1.5, -0.4); ctx.lineTo(0.3, -0.2); ctx.closePath();
+      ctx.fill();
     }
 
     // Arms
-    const shoulderY = -3.3;
-    if (m.type === 'zombie' && !attacking && !flail) {
-      limb(ctx, -2.0, shoulderY, 4.6, -3.2 + Math.sin(phase) * 0.7, 1.9, pal.shirtD, outline);
-      limb(ctx,  2.0, shoulderY, 5.0, -1.6 - Math.sin(phase) * 0.6, 1.9, pal.shirtD, outline);
-      ctx.fillStyle = skin;
-      ctx.beginPath(); ctx.arc(4.6, -3.2 + Math.sin(phase) * 0.7, 1.05, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(5.0, -1.6 - Math.sin(phase) * 0.6, 1.05, 0, Math.PI * 2); ctx.fill();
-    } else {
-      limb(ctx, -2.1, shoulderY, -3.2 - armL * 0.15, 0.6 + armL * 0.05, 1.9, shirt, outline);
-      limb(ctx,  2.1, shoulderY,  3.2 + armR * 0.15, 0.6 + armR * 0.05, 1.9, shirt, outline);
-      ctx.fillStyle = skin;
-      ctx.beginPath(); ctx.arc(-3.2 - armL * 0.15, 0.6 + armL * 0.05, 1.05, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc( 3.2 + armR * 0.15, 0.6 + armR * 0.05, 1.05, 0, Math.PI * 2); ctx.fill();
-    }
+    const shoulderY = -3.4;
+    const drawArm = (side, swing) => {
+      const sx = side * (isGhoul ? 2.3 : 2.15), sy = shoulderY;
+      let ex, ey, hx, hy;
+      if (isGhoul && !attacking && !flail) {
+        ex = 3.2 + side * 0.4;
+        ey = -2.8 + Math.sin(phase + side) * 0.5;
+        hx = 5.4 + side * 0.3;
+        hy = -2.0 - Math.sin(phase + side) * 0.6;
+      } else {
+        ex = sx + swing * 0.15 * side + side * 0.8;
+        ey = sy + armLen * 0.48 + Math.abs(swing) * 0.05;
+        hx = sx + side * 1.1 + swing * 0.18;
+        hy = sy + armLen * 0.95 + swing * 0.08;
+        // punch: extend the facing arm
+        if (attacking && side === 1 && (m.attackStyle === 'punch' || m.attackStyle === 'shove' || m.attackStyle === 'bite')) {
+          ex = 3.2; ey = -2.2;
+          hx = Math.abs(swing) + 4.2; hy = -1.6;
+        }
+      }
+      const col = isDummy ? pal.skin : (isGhoul ? pal.shirtD : pal.shirt);
+      bone(ctx, sx, sy, ex, ey, 1.7, col, outline);
+      bone(ctx, ex, ey, hx, hy, 1.5, col, outline);
+      if (isDummy) {
+        joint(ctx, sx, sy, 0.8, pal.shoe, outline);
+        joint(ctx, ex, ey, 0.7, pal.shoe, outline);
+      }
+      ctx.fillStyle = pal.skin;
+      ctx.beginPath(); ctx.arc(hx, hy, isGhoul ? 1.15 : 1.0, 0, Math.PI * 2); ctx.fill();
+      if (isGhoul) {
+        // short claws
+        ctx.strokeStyle = pal.skinD;
+        ctx.lineWidth = 0.45;
+        ctx.beginPath();
+        ctx.moveTo(hx + 0.4, hy - 0.4); ctx.lineTo(hx + 1.4, hy - 0.7);
+        ctx.moveTo(hx + 0.4, hy + 0.2); ctx.lineTo(hx + 1.5, hy + 0.15);
+        ctx.stroke();
+      }
+    };
+    drawArm(-1, armL);
+    drawArm(1, armR);
 
     // Head
     ctx.save();
-    ctx.translate(headX, -7.1 + headY);
-    ctx.fillStyle = skin;
+    ctx.translate(headX, -7.25 + headY);
+    if (isGhoul) ctx.rotate(-0.08);
+
+    if (isHopper) {
+      ctx.fillStyle = pal.hair;
+      ctx.beginPath();
+      ctx.arc(0, -0.4, 3.1, Math.PI, Math.PI * 2);
+      ctx.fill();
+      // Topknot
+      ctx.beginPath(); ctx.ellipse(0.15, -3.7, 1.05, 1.2, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = pal.hair;
+      ctx.lineWidth = 0.55;
+      ctx.beginPath(); ctx.moveTo(0.15, -2.6); ctx.lineTo(0.15, -2.0); ctx.stroke();
+    } else if (isGhoul) {
+      ctx.fillStyle = pal.hair;
+      ctx.beginPath();
+      ctx.ellipse(-0.8, -1.6, 2.1, 2.0, -0.3, 0, Math.PI * 2);
+      ctx.ellipse(1.2, -2.0, 1.3, 1.5, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = pal.skin;
     ctx.strokeStyle = outline;
     ctx.lineWidth = 0.7;
     ctx.beginPath();
-    ctx.arc(0, 0, 3.25, 0, Math.PI * 2);
+    if (isGhoul) ctx.ellipse(0, 0.15, 3.15, 3.35, 0, 0, Math.PI * 2);
+    else ctx.arc(0, 0, 3.2, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
 
-    if (m.type === 'walker') {
-      // Cap
-      ctx.fillStyle = '#1e40af';
-      ctx.beginPath();
-      ctx.ellipse(0, -1.7, 3.15, 1.7, 0, Math.PI, Math.PI * 2);
-      ctx.fill();
-      ctx.fillRect(1.4, -1.6, 2.6, 0.7);
-    } else if (m.type === 'jumper') {
-      // Spiky hair
+    if (isScout) {
       ctx.fillStyle = pal.hair;
       ctx.beginPath();
-      ctx.moveTo(-2.6, -1.4); ctx.lineTo(-2.0, -4.0); ctx.lineTo(-0.6, -2.0);
-      ctx.lineTo(0.4, -4.2); ctx.lineTo(1.4, -2.0); ctx.lineTo(2.6, -3.6); ctx.lineTo(2.6, -1.2);
+      ctx.ellipse(0, -1.15, 3.35, 2.55, 0, Math.PI, Math.PI * 2);
       ctx.fill();
-    } else if (m.type === 'zombie') {
-      // Patchy hair + torn ear
+      ctx.beginPath();
+      ctx.ellipse(-2.55, 0.15, 0.7, 1.45, 0.25, 0, Math.PI * 2);
+      ctx.ellipse(2.55, 0.15, 0.7, 1.45, -0.25, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    if (isDummy) {
+      // Helmet
       ctx.fillStyle = pal.hair;
       ctx.beginPath();
-      ctx.arc(-1.4, -2.2, 1.3, 0, Math.PI * 2);
-      ctx.arc(0.6, -2.5, 0.9, 0, Math.PI * 2);
+      ctx.ellipse(0, -0.7, 3.35, 2.7, 0, Math.PI, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = skin;
-      ctx.beginPath(); ctx.ellipse(-3.3, 0.2, 0.7, 1.1, -0.4, 0, Math.PI * 2); ctx.fill();
-    } else if (m.type === 'dummy') {
-      ctx.strokeStyle = '#0f172a';
-      ctx.lineWidth = 0.85;
+      ctx.fillRect(-3.3, -0.85, 6.6, 0.7);
+      // Visor slit
+      ctx.fillStyle = '#0a0a0a';
       ctx.beginPath();
-      ctx.moveTo(-1.3, -1.2); ctx.lineTo(1.3, 1.2);
-      ctx.moveTo(1.3, -1.2); ctx.lineTo(-1.3, 1.2);
+      ctx.roundRect(-1.9, -0.55, 3.8, 1.15, 0.45);
+      ctx.fill();
+      ctx.fillStyle = hurt ? '#f87171' : '#67e8f9';
+      ctx.globalAlpha = 0.75;
+      ctx.beginPath(); ctx.roundRect(-1.6, -0.35, 1.2, 0.7, 0.25); ctx.fill();
+      ctx.beginPath(); ctx.roundRect(0.4, -0.35, 1.2, 0.7, 0.25); ctx.fill();
+      ctx.globalAlpha = 1;
+    } else if (isGhoul) {
+      // Hollow sockets + mint pupils
+      ctx.fillStyle = '#1a1520';
+      ctx.beginPath(); ctx.ellipse(1.05, -0.25, 1.15, 1.25, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(-0.85, -0.05, 0.85, 0.9, 0, 0, Math.PI * 2); ctx.fill();
+      if (!blink && !dying) {
+        ctx.fillStyle = pal.accent;
+        ctx.beginPath(); ctx.arc(1.15, -0.15, 0.42, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(-0.75, 0.05, 0.32, 0, Math.PI * 2); ctx.fill();
+      }
+      // Thin grimace + stitch
+      ctx.strokeStyle = pal.skinD;
+      ctx.lineWidth = 0.55;
+      ctx.beginPath();
+      ctx.arc(0.2, 1.55, 1.15, 0.15, Math.PI - 0.15);
+      ctx.stroke();
+      ctx.lineWidth = 0.4;
+      ctx.beginPath();
+      ctx.moveTo(-1.6, 0.9); ctx.lineTo(-2.2, 1.4);
+      ctx.moveTo(-1.85, 0.7); ctx.lineTo(-1.95, 1.55);
+      ctx.stroke();
+    } else {
+      // Scout / Hopper faces
+      const eyeY = hurt || dying ? -0.05 : -0.25;
+      if (dying || (blink && !attacking)) {
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 0.45;
+        ctx.beginPath(); ctx.moveTo(0.2, eyeY); ctx.lineTo(1.3, eyeY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-1.2, eyeY); ctx.lineTo(-0.2, eyeY); ctx.stroke();
+      } else {
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.ellipse(0.85, eyeY, 0.85, 0.95, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(-0.65, eyeY, 0.8, 0.9, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#0f172a';
+        ctx.beginPath(); ctx.arc(1.05, eyeY + 0.05, 0.42, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(-0.48, eyeY + 0.05, 0.4, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(1.18, eyeY - 0.12, 0.16, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(-0.35, eyeY - 0.12, 0.14, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.strokeStyle = hurt ? '#9f1239' : '#7c2d12';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      if (attacking) ctx.arc(0.15, 1.35, 1.0, 0.2, Math.PI - 0.2); // grit
+      else if (isHopper) ctx.arc(0.15, 1.2, 1.2, 0.15, Math.PI - 0.15); // grin
+      else ctx.arc(0.15, 1.25, 1.05, 0.2, Math.PI - 0.2);
       ctx.stroke();
     }
 
-    // Faces (drawn in unflipped x because we already scaled by facing)
-    if (m.type !== 'dummy') {
-      if (m.type === 'zombie') {
-        // Uneven glowing eyes
-        ctx.fillStyle = '#7f1d1d';
-        ctx.beginPath(); ctx.ellipse(1.05, -0.45, 1.15, 1.35, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#facc15';
-        ctx.beginPath(); ctx.arc(1.1, -0.45, 0.48, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#450a0a';
-        ctx.beginPath(); ctx.ellipse(-0.85, -0.1, 0.65, 0.4, 0, 0, Math.PI * 2); ctx.fill();
-        // Gaping jaw + teeth
-        ctx.fillStyle = '#1a0a0a';
-        ctx.beginPath(); ctx.ellipse(0.25, 1.7, 1.55, (attacking ? 1.35 : 0.95), 0, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#f8fafc';
-        ctx.fillRect(-0.7, 1.1, 0.5, 0.65);
-        ctx.fillRect(0.15, 1.15, 0.4, 0.55);
-        ctx.fillRect(0.9, 1.1, 0.4, 0.6);
-      } else {
-        ctx.fillStyle = '#0f172a';
-        ctx.beginPath(); ctx.arc(0.7, -0.25, 0.55, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(-0.55, -0.25, 0.5, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#fff';
-        ctx.beginPath(); ctx.arc(0.85, -0.4, 0.2, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(-0.4, -0.4, 0.18, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = '#7c2d12';
-        ctx.lineWidth = 0.45;
-        ctx.beginPath();
-        ctx.arc(0.2, 1.15, 1.1, 0.15, Math.PI - 0.15);
-        ctx.stroke();
-      }
-    } else {
-      ctx.fillStyle = '#0f172a';
-      ctx.beginPath(); ctx.arc(-0.8, -0.2, 0.7, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(0.9, -0.2, 0.7, 0, Math.PI * 2); ctx.fill();
-    }
-
     ctx.restore(); // head
+    ctx.restore(); // torso rot
 
-    // Status
+    // Status FX
     if (m.burnTimer > 0) {
       ctx.fillStyle = 'rgba(255, 130, 20, 0.8)';
       ctx.beginPath();
@@ -1054,9 +1263,8 @@
       ctx.lineWidth = 1.0;
       ctx.beginPath(); ctx.arc(0, -2, 6.5, 0, Math.PI * 2); ctx.stroke();
     }
-
     if (m.hurtFlash > 0) {
-      ctx.fillStyle = 'rgba(255, 70, 70, 0.38)';
+      ctx.fillStyle = 'rgba(255, 70, 70, 0.32)';
       ctx.beginPath();
       ctx.arc(0, -2, 8, 0, Math.PI * 2);
       ctx.fill();
@@ -1064,16 +1272,15 @@
 
     ctx.restore();
 
-    // Health bar: show when hurt or in combat
-    if (m.hp < m.maxHp || m.combatTimer > 0) {
+    if (m.hp < m.maxHp || m.combatTimer > 0 || m.dying > 0) {
       const pct = Math.max(0, m.hp / m.maxHp);
       ctx.fillStyle = 'rgba(0,0,0,0.65)';
-      ctx.fillRect(m.x - 6.5, m.y - 20, 13, 2.3);
+      ctx.fillRect(m.x - 6.5, m.y - 21, 13, 2.3);
       ctx.fillStyle = pct > 0.5 ? '#4ade80' : (pct > 0.25 ? '#facc15' : '#f43f5e');
-      ctx.fillRect(m.x - 6.5, m.y - 20, 13 * pct, 2.3);
+      ctx.fillRect(m.x - 6.5, m.y - 21, 13 * pct, 2.3);
       ctx.strokeStyle = 'rgba(255,255,255,0.25)';
       ctx.lineWidth = 0.35;
-      ctx.strokeRect(m.x - 6.5, m.y - 20, 13, 2.3);
+      ctx.strokeRect(m.x - 6.5, m.y - 21, 13, 2.3);
     }
 
     if (m.state === 'grabbed') {
@@ -1086,19 +1293,64 @@
   }
 
   function renderFrame() {
-    imgU32.set(engine.pixels);
-    offCtx.putImageData(imgData, 0, 0);
-    fluidU32.set(engine.fluidPixels);
-    fluidCtx.putImageData(fluidData, 0, 0);
-
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Parallax night sky
+    const skyT = engine.tick * 0.004;
     const sky = ctx.createLinearGradient(0, 0, 0, viewH);
-    sky.addColorStop(0, '#24314a');
-    sky.addColorStop(0.42, '#141c2c');
-    sky.addColorStop(1, '#080b12');
+    sky.addColorStop(0, '#1c2844');
+    sky.addColorStop(0.22 + Math.sin(skyT) * 0.02, '#1a2748');
+    sky.addColorStop(0.55, '#121a2c');
+    sky.addColorStop(0.82, '#0c111c');
+    sky.addColorStop(1, '#07090f');
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, viewW, viewH);
+
+    const starParX = cam.panX * 0.12, starParY = cam.panY * 0.12;
+    ctx.fillStyle = '#dbe7ff';
+    for (let i = 0; i < SKY_STARS.length; i++) {
+      const st = SKY_STARS[i];
+      const tw = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(engine.tick * 0.04 + st.p));
+      ctx.globalAlpha = 0.25 + tw * 0.65;
+      const sx = ((st.x * viewW + starParX) % viewW + viewW) % viewW;
+      const sy = ((st.y * viewH + starParY) % (viewH * 0.7) + viewH * 0.7) % (viewH * 0.7);
+      ctx.beginPath();
+      ctx.arc(sx, sy, st.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Soft moon
+    const moonX = viewW * 0.78 + cam.panX * 0.18;
+    const moonY = viewH * 0.16 + cam.panY * 0.18;
+    const moon = ctx.createRadialGradient(moonX, moonY, 2, moonX, moonY, 46);
+    moon.addColorStop(0, 'rgba(255, 248, 230, 0.95)');
+    moon.addColorStop(0.35, 'rgba(226, 232, 255, 0.45)');
+    moon.addColorStop(1, 'rgba(226, 232, 255, 0)');
+    ctx.fillStyle = moon;
+    ctx.beginPath(); ctx.arc(moonX, moonY, 46, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#e8eefc';
+    ctx.beginPath(); ctx.arc(moonX, moonY, 11, 0, Math.PI * 2); ctx.fill();
+
+    // Parallax haze clouds
+    const cParX = cam.panX * 0.3;
+    ctx.fillStyle = 'rgba(150, 170, 210, 0.07)';
+    for (let c = 0; c < 4; c++) {
+      const cx = (viewW * (0.15 + c * 0.24) + Math.sin(skyT * 0.6 + c) * 18 + cParX);
+      const cy = viewH * (0.18 + (c % 3) * 0.07);
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, 70 + c * 16, 16 + (c % 2) * 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Horizon atmosphere
+    const haze = ctx.createLinearGradient(0, viewH * 0.58, 0, viewH);
+    haze.addColorStop(0, 'rgba(40, 60, 100, 0)');
+    haze.addColorStop(0.45, 'rgba(32, 48, 82, 0.16)');
+    haze.addColorStop(1, 'rgba(10, 14, 24, 0.22)');
+    ctx.fillStyle = haze;
+    ctx.fillRect(0, viewH * 0.55, viewW, viewH * 0.45);
 
     // Apply camera zoom & pan
     ctx.translate(viewW * 0.5 + cam.panX, viewH * 0.5 + cam.panY);
@@ -1111,37 +1363,47 @@
     const ox = offX + (engine.shakeX || 0) * scale;
     const oy = offY + (engine.shakeY || 0) * scale;
 
-    // Draw buffers at an explicit destination size so bilinear smoothing actually runs
-    // (some browsers nearest-neighbor when scale is only in the transform).
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = gfxQuality >= 1 ? 'high' : 'low';
 
-    if (gfxQuality >= 1) {
-      ctx.filter = 'blur(' + Math.max(0.6, scale * 0.5).toFixed(2) + 'px)';
-      ctx.drawImage(offCanvas, ox, oy, dw, dh);
-      ctx.filter = 'none';
-      ctx.globalAlpha = 0.58;
-      ctx.drawImage(offCanvas, ox, oy, dw, dh);
-      ctx.globalAlpha = 1;
-    } else {
-      ctx.drawImage(offCanvas, ox, oy, dw, dh);
-    }
+    const drawLayer = (src, blurPx, coreAlpha) => {
+      if (blurPx > 0.05 && gfxQuality >= 1) {
+        ctx.filter = 'blur(' + blurPx.toFixed(2) + 'px)';
+        ctx.drawImage(src, ox, oy, dw, dh);
+        ctx.filter = 'none';
+        if (coreAlpha > 0) {
+          ctx.globalAlpha = coreAlpha;
+          ctx.drawImage(src, ox, oy, dw, dh);
+          ctx.globalAlpha = 1;
+        }
+      } else {
+        ctx.drawImage(src, ox, oy, dw, dh);
+      }
+    };
 
-    // Liquids: blur in screen pixels (~one cell) for a metaball / contour look
-    if (gfxQuality >= 2) {
-      ctx.filter = 'blur(' + Math.max(1.8, scale * 1.55).toFixed(2) + 'px)';
-      ctx.globalAlpha = 0.95;
-      ctx.drawImage(fluidCanvas, ox, oy, dw, dh);
-      ctx.filter = 'none';
-      ctx.globalAlpha = 0.28;
-      ctx.drawImage(fluidCanvas, ox, oy, dw, dh);
-      ctx.globalAlpha = 1;
-    } else if (gfxQuality >= 1) {
-      ctx.filter = 'blur(' + Math.max(1.1, scale * 1.0).toFixed(2) + 'px)';
-      ctx.drawImage(fluidCanvas, ox, oy, dw, dh);
-      ctx.filter = 'none';
+    if (engine.hiReady && engine.hiSolid) {
+      syncHiCanvases();
+      hiSolidU32.set(engine.hiSolid);
+      hiSolidCtx.putImageData(hiSolidData, 0, 0);
+      hiFluidU32.set(engine.hiFluid);
+      hiFluidCtx.putImageData(hiFluidData, 0, 0);
+      // 2x buffers already contour-smoothed; only a whisper of blur
+      const sBlur = gfxQuality >= 2 ? Math.max(0.25, scale * 0.18) : Math.max(0.2, scale * 0.14);
+      const fBlur = gfxQuality >= 2 ? Math.max(0.55, scale * 0.38) : Math.max(0.4, scale * 0.28);
+      drawLayer(hiSolidCanvas, sBlur, 0.72);
+      drawLayer(hiFluidCanvas, fBlur, 0.32);
     } else {
-      ctx.drawImage(fluidCanvas, ox, oy, dw, dh);
+      imgU32.set(engine.pixels);
+      offCtx.putImageData(imgData, 0, 0);
+      fluidU32.set(engine.fluidPixels);
+      fluidCtx.putImageData(fluidData, 0, 0);
+      if (gfxQuality >= 1) {
+        drawLayer(offCanvas, Math.max(0.6, scale * 0.5), 0.58);
+        drawLayer(fluidCanvas, Math.max(1.1, scale * (gfxQuality >= 2 ? 1.55 : 1.0)), gfxQuality >= 2 ? 0.28 : 0);
+      } else {
+        ctx.drawImage(offCanvas, ox, oy, dw, dh);
+        ctx.drawImage(fluidCanvas, ox, oy, dw, dh);
+      }
     }
 
     // World-space pass for sprites, characters, tools
@@ -1298,9 +1560,20 @@
       ctx.restore();
     }
 
-    // Draw Ballistic Particles (soft circles that fade out)
+    // Ballistic particles with short motion trails
     for (const p of engine.particles) {
       const alpha = p.redeposit ? 1 : Math.max(0, p.life / p.maxLife);
+      const spd = Math.hypot(p.vx || 0, p.vy || 0);
+      if (spd > 1.2 && gfxQuality >= 1) {
+        const steps = 3;
+        for (let t = steps; t >= 1; t--) {
+          ctx.globalAlpha = alpha * (0.18 * t);
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.arc(p.x - (p.vx || 0) * t * 0.35, p.y - (p.vy || 0) * t * 0.35, Math.max(0.45, p.size * 0.45), 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
       ctx.globalAlpha = alpha;
       ctx.fillStyle = p.color;
       ctx.beginPath();
@@ -1333,14 +1606,35 @@
 
     // Draw Fireworks
     for (const fw of engine.fireworks) {
-      ctx.fillStyle = fw.color;
-      ctx.fillRect(fw.x - 1.2, fw.y - 2.5, 2.4, 5);
+      ctx.save();
+      ctx.strokeStyle = fw.color;
+      ctx.globalAlpha = 0.45;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(fw.x, fw.y);
+      ctx.lineTo(fw.x - (fw.vx || 0) * 3, fw.y - (fw.vy || 0) * 3);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      const glow = ctx.createRadialGradient(fw.x, fw.y, 0, fw.x, fw.y, 5);
+      glow.addColorStop(0, '#fff7cc');
+      glow.addColorStop(0.4, fw.color);
+      glow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(fw.x, fw.y, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
     }
 
     // Draw Bullets
-    ctx.strokeStyle = '#fde047';
-    ctx.lineWidth = 1.4;
+    ctx.lineCap = 'round';
     for (const b of engine.bullets) {
+      ctx.strokeStyle = 'rgba(253, 224, 71, 0.35)';
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.moveTo(b.x, b.y);
+      ctx.lineTo(b.x - b.vx * 1.4, b.y - b.vy * 1.4);
+      ctx.stroke();
+      ctx.strokeStyle = '#fff6b0';
+      ctx.lineWidth = 1.15;
       ctx.beginPath();
       ctx.moveTo(b.x, b.y);
       ctx.lineTo(b.x - b.vx * 0.7, b.y - b.vy * 0.7);
@@ -1350,12 +1644,22 @@
     // Draw RPG Rockets
     for (const r of engine.rockets) {
       ctx.save();
+      ctx.strokeStyle = 'rgba(248, 250, 252, 0.35)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(r.x, r.y);
+      ctx.lineTo(r.x - Math.cos(r.angle) * 8, r.y - Math.sin(r.angle) * 8);
+      ctx.stroke();
       ctx.translate(r.x, r.y);
       ctx.rotate(r.angle);
       ctx.fillStyle = '#e2e8f0';
-      ctx.fillRect(-4, -1.3, 6, 2.6);
+      ctx.beginPath();
+      ctx.roundRect(-4, -1.3, 6, 2.6, 0.8);
+      ctx.fill();
       ctx.fillStyle = '#ef4444';
-      ctx.fillRect(2, -1.3, 2.2, 2.6);
+      ctx.beginPath();
+      ctx.roundRect(2, -1.3, 2.2, 2.6, 0.5);
+      ctx.fill();
       ctx.restore();
     }
 
@@ -1364,14 +1668,26 @@
       drawStickMob(ctx, m);
     }
 
-    // Draw Explosion shockwave rings
+    // Explosions: heat glow + double shockwave rings
     for (const f of engine.flashes) {
       const a = Math.max(0, f.life / f.maxLife);
-      ctx.strokeStyle = `rgba(255, 220, 120, ${a * 0.75})`;
-      ctx.lineWidth = 2.0 * a;
-      ctx.beginPath();
-      ctx.arc(f.x, f.y, f.radius, 0, Math.PI * 2);
-      ctx.stroke();
+      const rad = Math.max(0.5, f.radius);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const glow = ctx.createRadialGradient(f.x, f.y, rad * 0.08, f.x, f.y, rad * 1.15);
+      glow.addColorStop(0, `rgba(255, 250, 220, ${0.85 * a})`);
+      glow.addColorStop(0.25, `rgba(255, 170, 60, ${0.45 * a})`);
+      glow.addColorStop(0.65, `rgba(255, 80, 20, ${0.16 * a})`);
+      glow.addColorStop(1, 'rgba(255, 40, 0, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(f.x, f.y, rad * 1.15, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = `rgba(255, 240, 180, ${a * 0.9})`;
+      ctx.lineWidth = Math.max(0.8, 2.6 * a);
+      ctx.beginPath(); ctx.arc(f.x, f.y, rad, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = `rgba(255, 180, 80, ${a * 0.45})`;
+      ctx.lineWidth = Math.max(0.5, 1.4 * a);
+      ctx.beginPath(); ctx.arc(f.x, f.y, rad * 0.62, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
     }
 
     // Aim / brush / tool preview — always obvious for the selected option
@@ -1484,13 +1800,37 @@
         ctx.moveTo(15.5, 5.5); ctx.lineTo(19.5, 9.5); ctx.lineTo(11, 18); ctx.lineTo(7, 18); ctx.lineTo(3.5, 14.5); ctx.closePath();
         break;
       case 'walker':
+        ctx.arc(12, 5.4, 2.15, 0, Math.PI * 2);
+        ctx.moveTo(10.2, 3.6); ctx.quadraticCurveTo(12, 2.1, 13.8, 3.6);
+        ctx.moveTo(12, 7.6); ctx.lineTo(12, 12.2);
+        ctx.moveTo(8.6, 20.8); ctx.lineTo(12, 12.6); ctx.lineTo(15.4, 20.8);
+        ctx.moveTo(7.8, 12.2); ctx.lineTo(16.2, 12.2);
+        ctx.moveTo(8.4, 10.6); ctx.quadraticCurveTo(7, 11.4, 6.4, 12.4);
+        break;
       case 'jumper':
+        ctx.arc(12, 5.2, 2.05, 0, Math.PI * 2);
+        ctx.arc(12, 1.8, 0.65, 0, Math.PI * 2);
+        ctx.moveTo(12, 7.3); ctx.lineTo(12, 10.6);
+        ctx.moveTo(7.2, 20.2); ctx.lineTo(12, 10.6); ctx.lineTo(14.2, 16.2); ctx.lineTo(17.2, 14.2);
+        ctx.moveTo(6.8, 11.2); ctx.lineTo(12, 9.6); ctx.lineTo(17.6, 12.8);
+        break;
       case 'zombie':
+        ctx.arc(11, 5.6, 2.2, 0, Math.PI * 2);
+        ctx.moveTo(11, 7.8); ctx.lineTo(11, 13);
+        ctx.moveTo(8.2, 21); ctx.lineTo(11, 13.4); ctx.lineTo(13.2, 21);
+        ctx.moveTo(11, 11.4); ctx.lineTo(18, 10.3);
+        ctx.moveTo(11, 13.6); ctx.lineTo(17.4, 14.2);
+        ctx.moveTo(8.4, 9.8); ctx.quadraticCurveTo(6.4, 12, 6.6, 14.6);
+        break;
       case 'dummy':
-        ctx.arc(12, 5.5, 2.2, 0, Math.PI * 2);
-        ctx.moveTo(12, 8); ctx.lineTo(12, 13.5);
-        ctx.moveTo(9, 21); ctx.lineTo(12, 13.5); ctx.lineTo(15, 21);
-        ctx.moveTo(7.5, 12.5); ctx.lineTo(16.5, 12.5);
+        ctx.arc(12, 5.6, 2.15, 0, Math.PI * 2);
+        ctx.moveTo(9.7, 5.15); ctx.lineTo(14.3, 5.15);
+        ctx.moveTo(12, 7.8); ctx.lineTo(12, 12.4);
+        ctx.arc(12, 13.1, 0.7, 0, Math.PI * 2);
+        ctx.moveTo(9, 20.6); ctx.lineTo(12, 13.6); ctx.lineTo(15, 20.6);
+        ctx.moveTo(8.5, 12.1); ctx.lineTo(15.5, 12.1);
+        ctx.arc(8.5, 12.1, 0.65, 0, Math.PI * 2);
+        ctx.arc(15.5, 12.1, 0.65, 0, Math.PI * 2);
         break;
       default:
         ctx.arc(12, 12, 6, 0, Math.PI * 2);
@@ -1695,7 +2035,7 @@
   populateScenes();
   renderPalette();
   SCENES[0].build();
-  showToast('SandForge V4 — Smooth fluids, vector characters, and a new icon UI.');
+  showToast('SandForge V5 — Sharper world, new faces.');
   window.SandForgeApp = {
     get engine() { return engine; },
     get currentTool() { return currentTool; },

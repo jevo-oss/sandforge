@@ -115,6 +115,18 @@
       this.gasL = new Uint8Array(900);
       this.gfxQuality = 2;
 
+      this.hiScale = 2;
+      this.hiW = this.width * 2;
+      this.hiH = this.height * 2;
+      this.hiSize = this.hiW * this.hiH;
+      this.hiSolid = new Uint32Array(this.hiSize);
+      this.hiFluid = new Uint32Array(this.hiSize);
+      this.occ = new Uint8Array(this.size);
+      this.lightR = new Uint16Array(this.size);
+      this.lightG = new Uint16Array(this.size);
+      this.lightB = new Uint16Array(this.size);
+      this.hiReady = false;
+
       this.nextMobId = 1;
       this.grabbed = null;
       this.maxParticles = 2400;
@@ -161,6 +173,9 @@
       this.fluidPixels.fill(0);
       this.gasCount = 0;
       this.grabbed = null;
+      this.hiReady = false;
+      if (this.hiSolid) this.hiSolid.fill(0);
+      if (this.hiFluid) this.hiFluid.fill(0);
     }
 
     inBounds(x, y) { return x >= 0 && x < this.width && y >= 0 && y < this.height; }
@@ -336,6 +351,7 @@
         lastHitBy: '',
         onGround: false,
         inWater: false,
+        dying: 0,
       };
       this.mobs.push(mob);
       return mob;
@@ -2009,11 +2025,18 @@
             this.infectMob(m);
             continue;
           }
-          const splatColors = { walker: '#60a5fa', jumper: '#a3e635', zombie: '#4ade80', dummy: '#fb923c' };
-          this.spawnSplat(m.x, m.y - 6, splatColors[m.type] || '#f87171', 18, 3.0);
-          if (this.grabbed && this.grabbed.ref === m) this.grabbed = null;
-          this.mobs.splice(i, 1);
-          continue;
+          if (m.dying <= 0) m.dying = 18;
+          else m.dying--;
+          if (m.dying <= 0) {
+            const splatColors = { walker: '#c45c3a', jumper: '#e23e6e', zombie: '#9f8ab8', dummy: '#eab308' };
+            this.spawnSplat(m.x, m.y - 6, splatColors[m.type] || '#f87171', 18, 3.0);
+            if (this.grabbed && this.grabbed.ref === m) this.grabbed = null;
+            this.mobs.splice(i, 1);
+            continue;
+          }
+          m.state = 'ragdoll';
+          m.ragdollTimer = Math.max(m.ragdollTimer, m.dying);
+          m.attackTimer = 0;
         }
 
         if (m.state === 'grabbed') {
@@ -2119,7 +2142,7 @@
       m.attackCooldown = 22;
       m.attackTimer = 0;
       m.lastHitBy = '';
-      this.spawnSplat(m.x, m.y - 7, '#4ade80', 10, 1.8);
+      this.spawnSplat(m.x, m.y - 7, '#a78bfa', 10, 1.8);
       return true;
     }
 
@@ -2529,6 +2552,291 @@
           a
         );
       }
+      this.renderPretty();
+    }
+
+    renderPretty() {
+      const quality = this.gfxQuality;
+      if (quality < 1) {
+        this.hiReady = false;
+        return;
+      }
+      const W = this.width, H = this.height, size = this.size;
+      const HS = 2, hW = W * HS, hH = H * HS, hSize = hW * hH;
+      if (this.hiW !== hW) {
+        this.hiW = hW; this.hiH = hH; this.hiSize = hSize;
+        this.hiSolid = new Uint32Array(hSize);
+        this.hiFluid = new Uint32Array(hSize);
+      }
+      const type = this.type, pixels = this.pixels, tick = this.tick;
+      const fluidDens = this.fluidDens, fluidKind = this.fluidKind;
+      const occ = this.occ, lightR = this.lightR, lightG = this.lightG, lightB = this.lightB;
+      const hiSolid = this.hiSolid, hiFluid = this.hiFluid;
+      hiSolid.fill(0);
+      hiFluid.fill(0);
+
+      for (let i = 0; i < size; i++) {
+        const t = type[i];
+        occ[i] = (t !== 0 && t < 19 && (t <= 6 || t >= 12)) ? 255 : 0;
+      }
+
+      lightR.fill(0); lightG.fill(0); lightB.fill(0);
+      const addLight = (cx, cy, pr, pg, pb, rad) => {
+        const R = rad | 0, R2 = R * R;
+        for (let dy = -R; dy <= R; dy++) {
+          const yy = cy + dy;
+          if ((yy >>> 0) >= H) continue;
+          const dy2 = dy * dy, row = yy * W;
+          for (let dx = -R; dx <= R; dx++) {
+            const d2 = dx * dx + dy2;
+            if (d2 > R2) continue;
+            const xx = cx + dx;
+            if ((xx >>> 0) >= W) continue;
+            const fall = 1 - d2 / R2;
+            const w = (fall * fall * 256) | 0;
+            const j = row + xx;
+            const nr = lightR[j] + ((pr * w) >> 8);
+            const ng = lightG[j] + ((pg * w) >> 8);
+            const nb = lightB[j] + ((pb * w) >> 8);
+            lightR[j] = nr > 4000 ? 4000 : nr;
+            lightG[j] = ng > 4000 ? 4000 : ng;
+            lightB[j] = nb > 4000 ? 4000 : nb;
+          }
+        }
+      };
+      const liteStep = quality >= 2 ? 1 : 2;
+      for (let i = 0; i < size; i += liteStep) {
+        const t = type[i];
+        if (t === EL.LAVA) addLight(i % W, (i / W) | 0, 255, 110, 30, 7);
+        else if (t === EL.FIRE) addLight(i % W, (i / W) | 0, 255, 150, 40, 6);
+        else if (t === EL.EMBER) addLight(i % W, (i / W) | 0, 255, 120, 30, 4);
+      }
+      const flashes = this.flashes;
+      for (let f = 0; f < flashes.length; f++) {
+        const fl = flashes[f];
+        addLight(fl.x | 0, fl.y | 0, 255, 210, 90, Math.max(6, (fl.radius * 0.35) | 0));
+      }
+
+      // Padded occupancy / density / color to skip per-sample bounds checks
+      const pW = W + 2;
+      if (!this._padOcc || this._padW !== pW) {
+        this._padW = pW;
+        this._padOcc = new Uint8Array((H + 2) * pW);
+        this._padDens = new Uint16Array((H + 2) * pW);
+        this._padKind = new Uint8Array((H + 2) * pW);
+        this._padPix = new Uint32Array((H + 2) * pW);
+        this._padLR = new Uint16Array((H + 2) * pW);
+        this._padLG = new Uint16Array((H + 2) * pW);
+        this._padLB = new Uint16Array((H + 2) * pW);
+        this._active = new Uint8Array(size);
+      }
+      const pOcc = this._padOcc, pDens = this._padDens, pKind = this._padKind, pPix = this._padPix;
+      const pLR = this._padLR, pLG = this._padLG, pLB = this._padLB, active = this._active;
+      pOcc.fill(0); pDens.fill(0); pKind.fill(0); pPix.fill(0); pLR.fill(0); pLG.fill(0); pLB.fill(0);
+      active.fill(0);
+      for (let y = 0; y < H; y++) {
+        const s = y * W, d = (y + 1) * pW + 1;
+        for (let x = 0; x < W; x++) {
+          const i = s + x, j = d + x;
+          pOcc[j] = occ[i];
+          pDens[j] = fluidDens[i];
+          pKind[j] = fluidKind[i];
+          pPix[j] = pixels[i];
+          pLR[j] = lightR[i];
+          pLG[j] = lightG[i];
+          pLB[j] = lightB[i];
+        }
+      }
+      for (let y = 0; y < H; y++) {
+        const s = y * W;
+        for (let x = 0; x < W; x++) {
+          const i = s + x;
+          if (occ[i] | fluidDens[i]) {
+            active[i] = 1;
+            if (x > 0) active[i - 1] = 1;
+            if (x < W - 1) active[i + 1] = 1;
+            if (y > 0) active[i - W] = 1;
+            if (y < H - 1) active[i + W] = 1;
+          }
+        }
+      }
+
+      const doWaves = quality >= 2;
+      const lerp = (a, b, t) => a + (b - a) * t;
+
+      for (let y = 0; y < H; y++) {
+        const s = y * W;
+        for (let x = 0; x < W; x++) {
+          if (!active[s + x]) continue;
+          for (let oy = 0; oy < 2; oy++) {
+            const sy = y * 2 + oy;
+            const fy = (sy + 0.5) * 0.5;
+            const iy = fy + 0.5; // +0.5 because pad has a 1-cell border; cell (0,0) lives at pad (1,1)
+            // Wait: pad index for cell (x,y) is (y+1)*pW+(x+1).
+            // We want bilinear of cell centers. Cell-center space: ix = fx - 0.5, then sample floor(ix).
+            const iy0 = fy - 0.5;
+            const y0 = iy0 | 0;
+            const dty = iy0 - y0;
+            const py0 = y0 + 1; // pad row
+            const row = sy * hW;
+            for (let ox = 0; ox < 2; ox++) {
+              const sx = x * 2 + ox;
+              const fx = (sx + 0.5) * 0.5;
+              const ix0 = fx - 0.5;
+              const x0 = ix0 | 0;
+              const dtx = ix0 - x0;
+              const px0 = x0 + 1;
+              const i00 = py0 * pW + px0;
+              const i10 = i00 + 1;
+              const i01 = i00 + pW;
+              const i11 = i01 + 1;
+
+              const o00 = pOcc[i00], o10 = pOcc[i10], o01 = pOcc[i01], o11 = pOcc[i11];
+              const j = row + sx;
+              const i00u = i00 - pW, i10u = i10 - pW, i01u = i01 - pW, i11u = i11 - pW;
+
+              // Interior solid: skip contour math, just light the already-shaded cell color
+              if ((o00 & o10 & o01 & o11) === 255) {
+                const px = pPix[i00];
+                let r = px & 255, g = (px >> 8) & 255, b = (px >> 16) & 255, a = (px >>> 24) & 255;
+                const lr = pLR[i00], lg = pLG[i00], lb = pLB[i00];
+                r += lr * 0.22; g += lg * 0.22; b += lb * 0.22;
+                hiSolid[j] = packColor(
+                  r > 255 ? 255 : r | 0,
+                  g > 255 ? 255 : g | 0,
+                  b > 255 ? 255 : b | 0,
+                  a || 255
+                );
+                continue;
+              }
+
+              const o = lerp(lerp(o00, o10, dtx), lerp(o01, o11, dtx), dty);
+              const sh = lerp(lerp(pOcc[i00u], pOcc[i10u], dtx), lerp(pOcc[i01u], pOcc[i11u], dtx), dty);
+
+              if (o >= 16) {
+                let wr = 0, wg = 0, wb = 0, wa = 0, wt = 0;
+                const acc = (px, w) => {
+                  if (px && w > 0) {
+                    wt += w;
+                    wr += (px & 255) * w;
+                    wg += ((px >> 8) & 255) * w;
+                    wb += ((px >> 16) & 255) * w;
+                    wa += ((px >>> 24) & 255) * w;
+                  }
+                };
+                acc(pPix[i00], o00 * (1 - dtx) * (1 - dty));
+                acc(pPix[i10], o10 * dtx * (1 - dty));
+                acc(pPix[i01], o01 * (1 - dtx) * dty);
+                acc(pPix[i11], o11 * dtx * dty);
+                if (wt >= 1) {
+                  let r = wr / wt, g = wg / wt, b = wb / wt, a = wa / wt;
+                  const t = o / 255;
+                  const cover = t < 0.28 ? 0 : (t > 0.78 ? 1 : (t - 0.28) / 0.5);
+                  const sm = cover * cover * (3 - 2 * cover);
+                  a *= sm;
+                  if (a >= 2) {
+                    const or = lerp(lerp(pOcc[i00 + 1], pOcc[i10 + 1], dtx), lerp(pOcc[i01 + 1], pOcc[i11 + 1], dtx), dty);
+                    const od = lerp(lerp(pOcc[i00 + pW], pOcc[i10 + pW], dtx), lerp(pOcc[i01 + pW], pOcc[i11 + pW], dtx), dty);
+                    const gx = or - o, gy = od - o;
+                    const rim = Math.max(0, (-gx - gy * 1.2) / 220);
+                    const ao = Math.max(0, gy / 260);
+                    r += rim * 48 - ao * 28;
+                    g += rim * 44 - ao * 28;
+                    b += rim * 40 - ao * 24;
+                    const lr = lerp(lerp(pLR[i00], pLR[i10], dtx), lerp(pLR[i01], pLR[i11], dtx), dty);
+                    const lg = lerp(lerp(pLG[i00], pLG[i10], dtx), lerp(pLG[i01], pLG[i11], dtx), dty);
+                    const lb = lerp(lerp(pLB[i00], pLB[i10], dtx), lerp(pLB[i01], pLB[i11], dtx), dty);
+                    r += lr * 0.22; g += lg * 0.22; b += lb * 0.22;
+                    hiSolid[j] = packColor(
+                      r < 0 ? 0 : (r > 255 ? 255 : r | 0),
+                      g < 0 ? 0 : (g > 255 ? 255 : g | 0),
+                      b < 0 ? 0 : (b > 255 ? 255 : b | 0),
+                      a > 255 ? 255 : a | 0
+                    );
+                  }
+                }
+              } else if (sh > 24) {
+                const sa = (sh * 0.32) | 0;
+                hiSolid[j] = packColor(4, 6, 10, sa > 110 ? 110 : sa);
+              }
+
+              let sfx = fx, sfy = fy;
+              const dPeek = pDens[i00];
+              if (dPeek > 0 || pDens[i10] | pDens[i01] | pDens[i11]) {
+                if (doWaves) {
+                  const kPeek = pKind[i00] || pKind[i10] || pKind[i01] || pKind[i11];
+                  if (kPeek === EL.LAVA) {
+                    sfx += Math.sin(fy * 1.6 + tick * 0.28) * 0.22;
+                    sfy += Math.cos(fx * 1.3 + tick * 0.2) * 0.16;
+                  } else if (kPeek === EL.WATER || kPeek === EL.SALTWATER || kPeek === EL.ACID || kPeek === EL.OIL) {
+                    if (pDens[i00u] < 180) {
+                      sfy += Math.sin(fx * 0.55 + tick * 0.12) * 0.32 + Math.sin(fx * 0.17 + tick * 0.07) * 0.18;
+                    }
+                  }
+                }
+                const dix = sfx - 0.5, diy = sfy - 0.5;
+                const dx0 = dix | 0, dy0 = diy | 0;
+                const ftx = dix - dx0, fty = diy - dy0;
+                const fi00 = (dy0 + 1) * pW + (dx0 + 1);
+                const fi10 = fi00 + 1, fi01 = fi00 + pW, fi11 = fi01 + 1;
+                const d = lerp(lerp(pDens[fi00], pDens[fi10], ftx), lerp(pDens[fi01], pDens[fi11], ftx), fty);
+                if (d > 28) {
+                  const LO = 28, HI = 120, SPAN = HI - LO;
+                  const tt = d >= HI ? 1 : (d - LO) / SPAN;
+                  let a = (240 * (tt * tt * (3 - 2 * tt))) | 0;
+                  let bestK = pKind[fi00], bestD = pDens[fi00];
+                  if (pDens[fi10] > bestD) { bestD = pDens[fi10]; bestK = pKind[fi10]; }
+                  if (pDens[fi01] > bestD) { bestD = pDens[fi01]; bestK = pKind[fi01]; }
+                  if (pDens[fi11] > bestD) { bestD = pDens[fi11]; bestK = pKind[fi11]; }
+                  const up = lerp(lerp(pDens[fi00 - pW], pDens[fi10 - pW], ftx), lerp(pDens[fi00], pDens[fi10], ftx), fty);
+                  const dn = lerp(lerp(pDens[fi01], pDens[fi11], ftx), lerp(pDens[fi01 + pW], pDens[fi11 + pW], ftx), fty);
+                  const lf = lerp(lerp(pDens[fi00 - 1], pDens[fi00], ftx), lerp(pDens[fi01 - 1], pDens[fi01], ftx), fty);
+                  const rt = lerp(lerp(pDens[fi10], pDens[fi10 + 1], ftx), lerp(pDens[fi11], pDens[fi11 + 1], ftx), fty);
+                  const ngx = rt - lf, ngy = dn - up;
+                  const nlen = Math.sqrt(ngx * ngx + ngy * ngy) + 0.001;
+                  let spec = Math.max(0, (-ngx / nlen) * 0.35 + (-ngy / nlen) * 0.9); spec = spec * spec; spec = spec * spec; spec = spec * spec * spec;
+                  const rim = Math.max(0, Math.min(1, (d - up) / 160));
+                  const deep = Math.max(0, Math.min(1, (up - HI) / 200));
+                  let r, g, b;
+                  switch (bestK) {
+                    case EL.SALTWATER:
+                      r = 36 + rim * 70 - deep * 10; g = 170 + rim * 30 - deep * 20; b = 210 + rim * 20 - deep * 8;
+                      break;
+                    case EL.OIL:
+                      r = 88 + rim * 50; g = 52 + rim * 40; b = 20 + rim * 22;
+                      break;
+                    case EL.LAVA: {
+                      const pulse = ((sx + sy + tick * 3) & 63) > 40;
+                      r = pulse ? 255 : 236;
+                      g = (pulse ? 170 : 78) + rim * 40;
+                      b = (pulse ? 60 : 16) + rim * 40;
+                      a = a < 230 ? 230 : a;
+                      break;
+                    }
+                    case EL.ACID:
+                      r = 90 + ((tick + sx) & 31) + rim * 50; g = 230 + rim * 15; b = 70 + rim * 50;
+                      break;
+                    default:
+                      r = 24 + rim * 70 - deep * 8;
+                      g = 118 + rim * 45 - deep * 22;
+                      b = 214 + rim * 16 - deep * 18;
+                  }
+                  r += spec * 210; g += spec * 220; b += spec * 230;
+                  const lr = lerp(lerp(pLR[fi00], pLR[fi10], ftx), lerp(pLR[fi01], pLR[fi11], ftx), fty);
+                  r += lr * 0.12; g += lerp(lerp(pLG[fi00], pLG[fi10], ftx), lerp(pLG[fi01], pLG[fi11], ftx), fty) * 0.1;
+                  hiFluid[j] = packColor(
+                    r < 0 ? 0 : (r > 255 ? 255 : r | 0),
+                    g < 0 ? 0 : (g > 255 ? 255 : g | 0),
+                    b < 0 ? 0 : (b > 255 ? 255 : b | 0),
+                    a > 255 ? 255 : a
+                  );
+                }
+              }
+            }
+          }
+        }
+      }
+      this.hiReady = true;
     }
 
     countByType() {
