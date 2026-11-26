@@ -104,6 +104,16 @@
       this.shakeX = 0;
       this.shakeY = 0;
       this.glows = [];
+      this.fluidDens = new Uint16Array(this.size);
+      this.fluidKind = new Uint8Array(this.size);
+      this.fluidTmp = new Uint16Array(this.size);
+      this.fluidPixels = new Uint32Array(this.size);
+      this.gasCount = 0;
+      this.gasX = new Int16Array(900);
+      this.gasY = new Int16Array(900);
+      this.gasT = new Uint8Array(900);
+      this.gasL = new Uint8Array(900);
+      this.gfxQuality = 2;
 
       this.nextMobId = 1;
       this.grabbed = null;
@@ -146,6 +156,10 @@
       this.shakeX = 0;
       this.shakeY = 0;
       this.glows.length = 0;
+      this.fluidDens.fill(0);
+      this.fluidKind.fill(0);
+      this.fluidPixels.fill(0);
+      this.gasCount = 0;
       this.grabbed = null;
     }
 
@@ -2256,100 +2270,264 @@
     }
 
     renderPixels() {
-      const size = this.size, W = this.width, H = this.height, type = this.type, life = this.life, variant = this.variant, pixels = this.pixels, tick = this.tick;
+      const size = this.size, W = this.width, H = this.height;
+      const type = this.type, life = this.life, variant = this.variant, pixels = this.pixels, tick = this.tick;
+      const fluidDens = this.fluidDens, fluidKind = this.fluidKind, fluidPixels = this.fluidPixels;
       const glows = this.glows;
       glows.length = 0;
+      fluidDens.fill(0);
+      fluidKind.fill(0);
+      this.gasCount = 0;
+      const quality = this.gfxQuality;
+      const gasCap = quality >= 2 ? 800 : (quality >= 1 ? 450 : 220);
+
+      const splat = (idx, kind, amt) => {
+        if (idx < 0 || idx >= size) return;
+        const nd = fluidDens[idx] + amt;
+        fluidDens[idx] = nd > 1023 ? 1023 : nd;
+        if (!fluidKind[idx] || amt >= 55) fluidKind[idx] = kind;
+      };
+
+      const isMatter = (t) => t !== EL.EMPTY && !isLiquid(t) && !isTransient(t);
+
       for (let i = 0; i < size; i++) {
         const t = type[i];
         if (t === EL.EMPTY) {
-          const y = (i / W) | 0;
-          const ny = y / H;
-          const grain = ((i * 13) ^ (y * 7)) & 7;
-          pixels[i] = packColor((11 + ny * 6 + (grain > 5 ? 3 : 0)) | 0, (15 + ny * 2 + (grain & 1)) | 0, (30 - ny * 9 + (grain & 3)) | 0);
+          pixels[i] = 0;
           continue;
         }
-        const v = variant[i], vOff = (v & 31) - 16;
 
+        // Liquids go into the metaball field, not the solid buffer
+        if (isLiquid(t)) {
+          pixels[i] = 0;
+          const x = i % W;
+          splat(i, t, 230);
+          if (x > 0) splat(i - 1, t, 110);
+          if (x < W - 1) splat(i + 1, t, 110);
+          if (i >= W) splat(i - W, t, 110);
+          if (i < size - W) splat(i + W, t, 110);
+          if (quality >= 1) {
+            if (x > 0 && i >= W) splat(i - W - 1, t, 58);
+            if (x < W - 1 && i >= W) splat(i - W + 1, t, 58);
+            if (x > 0 && i < size - W) splat(i + W - 1, t, 58);
+            if (x < W - 1 && i < size - W) splat(i + W + 1, t, 58);
+            if (x > 1) splat(i - 2, t, 28);
+            if (x < W - 2) splat(i + 2, t, 28);
+            if (i >= W * 2) splat(i - W * 2, t, 28);
+            if (i < size - W * 2) splat(i + W * 2, t, 28);
+          }
+          if (t === EL.LAVA && glows.length < 220 && ((i + tick) & 3) === 0) glows.push(i);
+          continue;
+        }
+
+        // Gases / energy: collected as soft sprites, transparent in the solid buffer
+        if (isTransient(t)) {
+          pixels[i] = 0;
+          if (this.gasCount < gasCap && ((i + tick) & (quality >= 2 ? 1 : 3)) === 0) {
+            const g = this.gasCount++;
+            this.gasX[g] = i % W;
+            this.gasY[g] = (i / W) | 0;
+            this.gasT[g] = t;
+            this.gasL[g] = life[i] > 255 ? 255 : life[i];
+          }
+          continue;
+        }
+
+        // Solids & powders: neighbor-shaded, fully opaque
+        const v = variant[i], vOff = (v & 31) - 16;
+        const x = i % W, y = (i / W) | 0;
+        const up = y > 0 && isMatter(type[i - W]);
+        const dn = y < H - 1 && isMatter(type[i + W]);
+        const lf = x > 0 && isMatter(type[i - 1]);
+        const rt = x < W - 1 && isMatter(type[i + 1]);
+        let shade = 1;
+        if (!up) shade += 0.16;
+        else shade -= 0.05;
+        if (!lf) shade += 0.07;
+        if (!rt) shade -= 0.06;
+        if (!dn) shade -= 0.08;
+        else shade -= 0.03;
+        // cheap AO from covered corners
+        if (up && lf) shade -= 0.04;
+
+        let r, g, b;
         switch (t) {
-          case EL.SAND: pixels[i] = packColor(Math.min(255, Math.max(0, 228 + vOff)), Math.min(255, Math.max(0, 190 + vOff)), Math.min(255, Math.max(0, 114 + (vOff >> 1)))); break;
-          case EL.SALT: { const s = 232 + (v & 15); pixels[i] = packColor(s, s - 3, s - 8); break; }
-          case EL.GUNPOWDER: { const c = 68 + (v & 23); pixels[i] = packColor(c, c + 3, c + 10); break; }
-          case EL.SEED: pixels[i] = packColor(152 + (v & 15), 124 + (v & 15), 68); break;
-          case EL.SNOW: { const c = 228 + (v & 23); pixels[i] = packColor(c, c + 4, 255); break; }
+          case EL.SAND:
+            r = 228 + vOff; g = 188 + vOff; b = 108 + (vOff >> 1);
+            break;
+          case EL.SALT: {
+            const s = 232 + (v & 15);
+            r = s; g = s - 3; b = s - 8;
+            break;
+          }
+          case EL.GUNPOWDER: {
+            const c = 70 + (v & 23);
+            r = c; g = c + 3; b = c + 10;
+            break;
+          }
+          case EL.SEED:
+            r = 152 + (v & 15); g = 124 + (v & 15); b = 68;
+            break;
+          case EL.SNOW: {
+            const c = 230 + (v & 23);
+            r = c; g = c + 4; b = 255;
+            if (!up) { r = 255; g = 255; b = 255; }
+            break;
+          }
           case EL.ASH: {
             const a = Math.min(1, life[i] / 120);
-            pixels[i] = packColor((BG_R + (115 - BG_R) * a) | 0, (BG_G + (120 - BG_G) * a) | 0, (BG_B + (130 - BG_B) * a) | 0);
+            r = (70 + 50 * a); g = (72 + 50 * a); b = (78 + 52 * a);
+            // store as semi-transparent ash
+            r = r | 0; g = g | 0; b = b | 0;
+            pixels[i] = packColor(
+              Math.max(0, Math.min(255, (r * shade) | 0)),
+              Math.max(0, Math.min(255, (g * shade) | 0)),
+              Math.max(0, Math.min(255, (b * shade) | 0)),
+              (a * 230) | 0
+            );
+            continue;
+          }
+          case EL.STONE: {
+            const c = 118 + (v & 31);
+            r = c; g = c + 5; b = c + 14;
             break;
           }
-          case EL.WATER: { const sh = ((i + (tick >> 2)) & 7) === 0 ? 18 : 0; pixels[i] = packColor(34 + sh, 136 + sh, 252); break; }
-          case EL.SALTWATER: { const sh = ((i + (tick >> 2)) & 7) === 0 ? 16 : 0; pixels[i] = packColor(52 + sh, 182 + sh, 220); break; }
-          case EL.OIL: { const sh = v & 15; pixels[i] = packColor(118 + sh, 74 + (sh >> 1), 30 + (sh & 7)); break; }
-          case EL.LAVA: {
-            const p = (v + tick * 3) & 63;
-            pixels[i] = p > 44 ? packColor(255, 205, 55) : packColor(245, 78 + (p & 31), 18);
-            break;
-          }
-          case EL.ACID: { const g = (v + tick * 2) & 31; pixels[i] = packColor(85 + g, 245, 50 + (g >> 1)); break; }
-          case EL.STONE: { const c = 112 + (v & 31); pixels[i] = packColor(c, c + 4, c + 12); break; }
           case EL.WOOD: {
-            const gr = ((i / W) | 0) & 3, bb = life[i] < 180 ? 35 : 0;
-            pixels[i] = packColor(Math.min(255, 132 + gr * 8 + (v & 7) + bb), Math.max(0, 82 + gr * 5 - (bb >> 1)), Math.max(0, 44 + gr * 3 - (bb >> 1)));
+            const gr = (y & 3), bb = life[i] < 180 ? 40 : 0;
+            r = 136 + gr * 8 + (v & 7) + bb;
+            g = 84 + gr * 5 - (bb >> 1);
+            b = 46 + gr * 3 - (bb >> 1);
             break;
           }
           case EL.METAL: {
-            const sh = ((i % W) + ((i / W) | 0)) & 7, zap = life[i] > 0 ? 90 : 0;
-            pixels[i] = packColor(Math.min(255, 145 + sh * 4 + zap), Math.min(255, 162 + sh * 4 + zap), Math.min(255, 180 + sh * 4 + (zap ? 75 : 0)));
+            const sh = (x + y) & 7, zap = life[i] > 0 ? 90 : 0;
+            r = 150 + sh * 5 + zap;
+            g = 166 + sh * 5 + zap;
+            b = 186 + sh * 4 + (zap ? 75 : 0);
+            if (!up) { r += 18; g += 18; b += 22; }
             break;
           }
-          case EL.ICE: { const gl = (v & 15) > 12 ? 25 : 0; pixels[i] = packColor(148 + gl, 224 + (gl >> 1), 255); break; }
-          case EL.GLASS: { const ed = (v & 7) === 0 ? 22 : 0; pixels[i] = packColor(140 + ed, 204 + ed, 232 + ed); break; }
+          case EL.ICE: {
+            const gl = (v & 15) > 11 ? 28 : 0;
+            r = 150 + gl; g = 226 + (gl >> 1); b = 255;
+            if (!up) { r = 230; g = 250; b = 255; }
+            pixels[i] = packColor(
+              Math.max(0, Math.min(255, (r * shade) | 0)),
+              Math.max(0, Math.min(255, (g * shade) | 0)),
+              Math.max(0, Math.min(255, (b * shade) | 0)),
+              220
+            );
+            continue;
+          }
+          case EL.GLASS: {
+            const ed = (v & 7) === 0 ? 24 : 0;
+            r = 150 + ed; g = 210 + ed; b = 236 + ed;
+            if (!up) { r += 20; g += 16; b += 10; }
+            pixels[i] = packColor(
+              Math.max(0, Math.min(255, (r * shade) | 0)),
+              Math.max(0, Math.min(255, (g * shade) | 0)),
+              Math.max(0, Math.min(255, (b * shade) | 0)),
+              200
+            );
+            continue;
+          }
           case EL.PLANT: {
-            const lf = v & 31, b = life[i] < 70 ? 60 : 0;
-            pixels[i] = packColor(36 + lf + b, Math.max(40, 165 + (lf >> 1) - b), 68);
+            const lf = v & 31, brn = life[i] < 70 ? 60 : 0;
+            r = 36 + lf + brn; g = Math.max(40, 168 + (lf >> 1) - brn); b = 68;
             break;
           }
           case EL.TNT: {
-            const x = i % W, y = (i / W) | 0;
             const st = (y & 3) === 0 || ((x + y) & 7) === 0;
-            pixels[i] = st ? packColor(245, 235, 225) : packColor(225, 48, 42);
+            if (st) { r = 245; g = 235; b = 225; }
+            else { r = 225; g = 48; b = 42; }
             break;
           }
-          case EL.FIRE: {
-            const f = Math.min(1, life[i] / 28);
-            pixels[i] = packColor((BG_R + (255 - BG_R) * Math.min(1, f * 1.4)) | 0, (BG_G + (220 * f * f)) | 0, (BG_B + (90 * f * f * f)) | 0);
-            break;
-          }
-          case EL.SMOKE: {
-            const a = Math.min(1, life[i] / 75) * 0.78, sh = 105 + (v & 31);
-            pixels[i] = packColor((BG_R + (sh - BG_R) * a) | 0, (BG_G + (sh + 4 - BG_G) * a) | 0, (BG_B + (sh + 12 - BG_B) * a) | 0);
-            break;
-          }
-          case EL.STEAM: {
-            const a = Math.min(1, life[i] / 80) * 0.72;
-            pixels[i] = packColor((BG_R + (205 - BG_R) * a) | 0, (BG_G + (232 - BG_G) * a) | 0, (BG_B + (255 - BG_B) * a) | 0);
-            break;
-          }
-          case EL.SPARK: {
-            const a = Math.min(1, life[i] / 14);
-            pixels[i] = packColor((BG_R + (160 - BG_R) * a) | 0, (BG_G + (248 - BG_G) * a) | 0, (BG_B + (255 - BG_B) * a) | 0);
-            break;
-          }
-          case EL.EMBER: {
-            const a = Math.min(1, life[i] / 40);
-            pixels[i] = packColor((BG_R + (255 - BG_R) * a) | 0, (BG_G + (135 * a * a)) | 0, (BG_B + (30 * a)) | 0);
-            break;
-          }
-          case EL.ACID_GAS: {
-            const a = Math.min(1, life[i] / 28) * 0.72;
-            pixels[i] = packColor((BG_R + (135 - BG_R) * a) | 0, (BG_G + (255 - BG_G) * a) | 0, (BG_B + (95 - BG_B) * a) | 0);
-            break;
-          }
+          default:
+            r = 160; g = 160; b = 160;
         }
 
-        // Sparse glow samples for fire/lava/sparks (bloom drawn in the view)
-        if (glows.length < 280 && (t === EL.FIRE || t === EL.LAVA || t === EL.SPARK || t === EL.EMBER) && (((i + tick) & 3) === 0)) {
-          glows.push(i);
+        pixels[i] = packColor(
+          Math.max(0, Math.min(255, (r * shade) | 0)),
+          Math.max(0, Math.min(255, (g * shade) | 0)),
+          Math.max(0, Math.min(255, (b * shade) | 0)),
+          255
+        );
+      }
+
+      // Soften liquid density (metaball-style), optionally twice at high quality
+      const blurFluid = () => {
+        const tmp = this.fluidTmp;
+        for (let y = 0; y < H; y++) {
+          const row = y * W;
+          for (let x = 0; x < W; x++) {
+            const i = row + x;
+            const l = x > 0 ? fluidDens[i - 1] : fluidDens[i];
+            const r = x < W - 1 ? fluidDens[i + 1] : fluidDens[i];
+            tmp[i] = (l + fluidDens[i] * 2 + r) >> 2;
+          }
         }
+        for (let x = 0; x < W; x++) {
+          for (let y = 0; y < H; y++) {
+            const i = y * W + x;
+            const u = y > 0 ? tmp[i - W] : tmp[i];
+            const d = y < H - 1 ? tmp[i + W] : tmp[i];
+            fluidDens[i] = (u + tmp[i] * 2 + d) >> 2;
+          }
+        }
+      };
+      if (quality >= 1) blurFluid();
+      if (quality >= 2) blurFluid();
+
+      const LO = quality >= 1 ? 32 : 22;
+      const HI = quality >= 1 ? 120 : 80;
+      const SPAN = HI - LO;
+      for (let i = 0; i < size; i++) {
+        const d = fluidDens[i];
+        if (d <= LO) {
+          fluidPixels[i] = 0;
+          continue;
+        }
+        const k = fluidKind[i];
+        const y = (i / W) | 0;
+        const up = y > 0 ? fluidDens[i - W] : 0;
+        const t = d >= HI ? 1 : (d - LO) / SPAN;
+        let a = Math.round(240 * (t * t * (3 - 2 * t))); // smoothstep
+        if (a < 1) { fluidPixels[i] = 0; continue; }
+        const rim = Math.max(0, Math.min(1, (d - up) / 160));
+        const deep = Math.max(0, Math.min(1, (up - HI) / 200));
+        let r, g, b;
+        switch (k) {
+          case EL.SALTWATER:
+            r = 36 + rim * 70 - deep * 10; g = 170 + rim * 30 - deep * 20; b = 210 + rim * 20 - deep * 8;
+            break;
+          case EL.OIL:
+            r = 88 + rim * 50; g = 52 + rim * 40; b = 20 + rim * 22;
+            break;
+          case EL.LAVA: {
+            const pulse = ((i + tick * 3) & 63) > 40;
+            r = (pulse ? 255 : 236);
+            g = (pulse ? 170 : 78) + rim * 40;
+            b = (pulse ? 60 : 16) + rim * 40;
+            a = Math.max(a, 230);
+            break;
+          }
+          case EL.ACID:
+            r = 90 + ((tick + i) & 31) + rim * 50;
+            g = 230 + rim * 15;
+            b = 70 + rim * 50;
+            break;
+          default: // water
+            r = 24 + rim * 70 - deep * 8;
+            g = 118 + rim * 45 - deep * 22;
+            b = 214 + rim * 16 - deep * 18;
+            break;
+        }
+        fluidPixels[i] = packColor(
+          Math.max(0, Math.min(255, r | 0)),
+          Math.max(0, Math.min(255, g | 0)),
+          Math.max(0, Math.min(255, b | 0)),
+          a
+        );
       }
     }
 

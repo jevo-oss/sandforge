@@ -2,30 +2,30 @@
   'use strict';
 
   const { SandEngine, EL, EL_META } = window.SandForge;
-  window.SANDFORGE_BUILD = 'SANDFORGE_V3_REVAMP';
+  window.SANDFORGE_BUILD = 'SANDFORGE_V4_SMOOTH';
 
   const TOOLS = {
     tools: [
-      { id: 'grab',     name: 'Grab / Throw', emoji: '🖐️', kind: 'tool', hint: 'Grab a mob or bomb to fling it, or scoop sand & water!' },
-      { id: 'minigun',  name: 'Minigun',      emoji: '🔫', kind: 'tool', hint: 'Hold to spray high-velocity bullets at the target' },
-      { id: 'rpg',      name: 'RPG',          emoji: '🚀', kind: 'tool', hint: 'Tap or drag-to-aim a rocket with smoke trail & blast' },
-      { id: 'bomb',     name: 'Bomb',         emoji: '💣', kind: 'tool', hint: 'Tap to drop or drag to throw a lit fuse bomb' },
-      { id: 'firework', name: 'Firework',     emoji: '🎆', kind: 'tool', hint: 'Tap to launch a colorful firework rocket' },
-      { id: 'tornado',  name: 'Tornado',      emoji: '🌪️', kind: 'tool', hint: 'Hold & drag to steer a tornado that flings everything' },
-      { id: 'tsunami',      name: 'Tsunami',       emoji: '🌊', kind: 'tool', hint: 'Tap left or right side to unleash a giant tidal wave' },
-      { id: 'meteor',       name: 'Meteor',        emoji: '☄️', kind: 'tool', hint: 'Tap a target — a meteor falls from the sky, craters terrain, and splashes lava' },
-      { id: 'lightning',    name: 'Lightning',     emoji: '⚡', kind: 'tool', hint: 'Tap to drop a bolt that ignites fuel, electrifies water & metal, and zaps mobs' },
-      { id: 'blackhole',    name: 'Black Hole',    emoji: '🕳️', kind: 'tool', hint: 'Tap (or hold & drag) a vortex that sucks in matter and mobs, then collapses' },
-      { id: 'nuke',         name: 'Nuke',          emoji: '☢️', kind: 'tool', hint: 'Tap for a huge blast, mushroom cloud, and shockwave — smoke still fades away' },
-      { id: 'earthquake',   name: 'Earthquake',    emoji: '🌍', kind: 'tool', hint: 'Shake the world, loosen solids, and knock every mob off its feet' },
-      { id: 'flamethrower', name: 'Flamethrower',  emoji: '🔥', kind: 'tool', hint: 'Drag to spray a cone of fire and embers' },
-      { id: 'eraser',       name: 'Eraser',        emoji: '🧹', kind: 'element', el: EL.EMPTY, hint: 'Erase cells, mobs, and bombs' },
+      { id: 'grab',     name: 'Grab / Throw', icon: 'grab', kind: 'tool', hint: 'Grab a mob or bomb to fling it, or scoop sand & water!' },
+      { id: 'minigun',  name: 'Minigun',      icon: 'minigun', kind: 'tool', hint: 'Hold to spray high-velocity bullets at the target' },
+      { id: 'rpg',      name: 'RPG',          icon: 'rpg', kind: 'tool', hint: 'Tap or drag-to-aim a rocket with smoke trail & blast' },
+      { id: 'bomb',     name: 'Bomb',         icon: 'bomb', kind: 'tool', hint: 'Tap to drop or drag to throw a lit fuse bomb' },
+      { id: 'firework', name: 'Firework',     icon: 'firework', kind: 'tool', hint: 'Tap to launch a colorful firework rocket' },
+      { id: 'tornado',  name: 'Tornado',      icon: 'tornado', kind: 'tool', hint: 'Hold & drag to steer a tornado that flings everything' },
+      { id: 'tsunami',      name: 'Tsunami',       icon: 'tsunami', kind: 'tool', hint: 'Tap left or right side to unleash a giant tidal wave' },
+      { id: 'meteor',       name: 'Meteor',        icon: 'meteor', kind: 'tool', hint: 'Tap a target — a meteor falls from the sky, craters terrain, and splashes lava' },
+      { id: 'lightning',    name: 'Lightning',     icon: 'lightning', kind: 'tool', hint: 'Tap to drop a bolt that ignites fuel, electrifies water & metal, and zaps mobs' },
+      { id: 'blackhole',    name: 'Black Hole',    icon: 'blackhole', kind: 'tool', hint: 'Tap (or hold & drag) a vortex that sucks in matter and mobs, then collapses' },
+      { id: 'nuke',         name: 'Nuke',          icon: 'nuke', kind: 'tool', hint: 'Tap for a huge blast, mushroom cloud, and shockwave — smoke still fades away' },
+      { id: 'earthquake',   name: 'Earthquake',    icon: 'earthquake', kind: 'tool', hint: 'Shake the world, loosen solids, and knock every mob off its feet' },
+      { id: 'flamethrower', name: 'Flamethrower',  icon: 'flamethrower', kind: 'tool', hint: 'Drag to spray a cone of fire and embers' },
+      { id: 'eraser',       name: 'Eraser',        icon: 'eraser', kind: 'element', el: EL.EMPTY, hint: 'Erase cells, mobs, and bombs' },
     ],
     mobs: [
-      { id: 'mob_walker', name: 'Walker',      emoji: '🏃', kind: 'mob', mobType: 'walker', hint: 'Tap to spawn stick dudes that walk, climb & swim' },
-      { id: 'mob_jumper', name: 'Jumper',      emoji: '🦘', kind: 'mob', mobType: 'jumper', hint: 'Bouncy stick jumpers that leap over terrain' },
-      { id: 'mob_zombie', name: 'Zombie',      emoji: '🧟', kind: 'mob', mobType: 'zombie', hint: 'Hunts humans — they fight back! Bites hurt; infection only after a knockout' },
-      { id: 'mob_dummy',  name: 'Crash Dummy', emoji: '🎯', kind: 'mob', mobType: 'dummy',  hint: 'Extra-bouncy ragdoll target dummy' },
+      { id: 'mob_walker', name: 'Walker',      icon: 'walker', kind: 'mob', mobType: 'walker', hint: 'Tap to spawn stick dudes that walk, climb & swim' },
+      { id: 'mob_jumper', name: 'Jumper',      icon: 'jumper', kind: 'mob', mobType: 'jumper', hint: 'Bouncy stick jumpers that leap over terrain' },
+      { id: 'mob_zombie', name: 'Zombie',      icon: 'zombie', kind: 'mob', mobType: 'zombie', hint: 'Hunts humans — they fight back! Bites hurt; infection only after a knockout' },
+      { id: 'mob_dummy',  name: 'Crash Dummy', icon: 'dummy', kind: 'mob', mobType: 'dummy',  hint: 'Extra-bouncy ragdoll target dummy' },
     ],
     solids: [
       EL.SAND, EL.STONE, EL.WOOD, EL.METAL, EL.ICE, EL.GLASS,
@@ -103,9 +103,46 @@
   const offCanvas = document.createElement('canvas');
   offCanvas.width = engine.width;
   offCanvas.height = engine.height;
-  const offCtx = offCanvas.getContext('2d');
+  const offCtx = offCanvas.getContext('2d', { alpha: true });
   const imgData = offCtx.createImageData(engine.width, engine.height);
   const imgU32 = new Uint32Array(imgData.data.buffer);
+
+  const fluidCanvas = document.createElement('canvas');
+  fluidCanvas.width = engine.width;
+  fluidCanvas.height = engine.height;
+  const fluidCtx = fluidCanvas.getContext('2d', { alpha: true });
+  const fluidData = fluidCtx.createImageData(engine.width, engine.height);
+  const fluidU32 = new Uint32Array(fluidData.data.buffer);
+
+  function makeGlowSprite(radius, stops) {
+    const sz = radius * 2;
+    const c = document.createElement('canvas');
+    c.width = sz;
+    c.height = sz;
+    const g = c.getContext('2d');
+    const grd = g.createRadialGradient(radius, radius, 0, radius, radius, radius);
+    for (const [t, col] of stops) grd.addColorStop(t, col);
+    g.fillStyle = grd;
+    g.fillRect(0, 0, sz, sz);
+    return c;
+  }
+  const sprFire = makeGlowSprite(12, [[0, 'rgba(255,250,210,0.95)'], [0.25, 'rgba(255,160,40,0.7)'], [0.65, 'rgba(255,70,10,0.25)'], [1, 'rgba(255,40,0,0)']]);
+  const sprEmber = makeGlowSprite(8, [[0, 'rgba(255,220,140,0.9)'], [0.4, 'rgba(255,90,20,0.5)'], [1, 'rgba(180,20,0,0)']]);
+  const sprSpark = makeGlowSprite(8, [[0, 'rgba(255,255,255,0.95)'], [0.35, 'rgba(120,240,255,0.55)'], [1, 'rgba(80,200,255,0)']]);
+  const sprSmoke = makeGlowSprite(14, [[0, 'rgba(180,188,200,0.45)'], [0.5, 'rgba(120,128,140,0.18)'], [1, 'rgba(80,86,96,0)']]);
+  const sprSteam = makeGlowSprite(14, [[0, 'rgba(230,240,255,0.42)'], [0.5, 'rgba(190,210,230,0.16)'], [1, 'rgba(200,220,255,0)']]);
+  const sprAcidGas = makeGlowSprite(12, [[0, 'rgba(180,255,120,0.4)'], [0.55, 'rgba(120,220,80,0.14)'], [1, 'rgba(80,200,40,0)']]);
+  const gasSprite = { [EL.FIRE]: sprFire, [EL.EMBER]: sprEmber, [EL.SPARK]: sprSpark, [EL.SMOKE]: sprSmoke, [EL.STEAM]: sprSteam, [EL.ACID_GAS]: sprAcidGas };
+  const gasSize = { [EL.FIRE]: 7.2, [EL.EMBER]: 4.4, [EL.SPARK]: 4.6, [EL.SMOKE]: 8.4, [EL.STEAM]: 8.0, [EL.ACID_GAS]: 6.2 };
+
+  let gfxQuality = 2;
+  let slowFrames = 0;
+  let goodFrames = 0;
+  let lastTime = 0;
+  let acc = 0;
+  let fpsCounter = 0;
+  let fpsLast = 0;
+  let fpsDisplay = 0;
 
   // Camera (zoom + pan in CSS/stage space)
   let cam = { zoom: 1, panX: 0, panY: 0 };
@@ -168,6 +205,26 @@
   let speedMul = 1;
   let toastTimer = null;
 
+  function iconEl(name) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'icon');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+    use.setAttribute('href', '#i-' + name);
+    use.setAttributeNS('http://www.w3.org/1999/xlink', 'href', '#i-' + name);
+    svg.appendChild(use);
+    return svg;
+  }
+
+  function setButtonIcon(btn, name) {
+    if (!btn) return;
+    const existing = btn.querySelector('.icon');
+    if (existing) existing.remove();
+    const ic = iconEl(name);
+    btn.insertBefore(ic, btn.firstChild);
+  }
+
   function showToast(msg) {
     if (!msg) return;
     toastEl.textContent = msg;
@@ -193,7 +250,7 @@
       sw.style.background = currentTool.color;
       activeIcon.appendChild(sw);
     } else {
-      activeIcon.textContent = currentTool.emoji || '•';
+      activeIcon.appendChild(iconEl(currentTool.icon || 'grab'));
     }
   }
 
@@ -220,10 +277,7 @@
         sw.style.background = item.color;
         btn.appendChild(sw);
       } else {
-        const em = document.createElement('span');
-        em.className = 'tool-emoji';
-        em.textContent = item.emoji;
-        btn.appendChild(em);
+        btn.appendChild(iconEl(item.icon || 'grab'));
       }
       const lbl = document.createElement('span');
       lbl.textContent = item.name;
@@ -268,7 +322,7 @@
 
   btnPause.addEventListener('click', () => {
     paused = !paused;
-    btnPause.textContent = paused ? '▶' : '⏸';
+    btnPause.replaceChildren(iconEl(paused ? 'play' : 'pause'));
     btnPause.classList.toggle('active', paused);
     showToast(paused ? 'Paused' : 'Playing');
   });
@@ -1032,16 +1086,17 @@
   }
 
   function renderFrame() {
-    // Upload cellular pixels to offscreen canvas
     imgU32.set(engine.pixels);
     offCtx.putImageData(imgData, 0, 0);
+    fluidU32.set(engine.fluidPixels);
+    fluidCtx.putImageData(fluidData, 0, 0);
 
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const sky = ctx.createLinearGradient(0, 0, 0, viewH);
-    sky.addColorStop(0, '#1a2438');
-    sky.addColorStop(0.45, '#101826');
-    sky.addColorStop(1, '#070a10');
+    sky.addColorStop(0, '#24314a');
+    sky.addColorStop(0.42, '#141c2c');
+    sky.addColorStop(1, '#080b12');
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, viewW, viewH);
 
@@ -1051,31 +1106,82 @@
     ctx.translate(-viewW * 0.5, -viewH * 0.5);
 
     const { scale, offX, offY } = getBaseTransform();
+    const dw = engine.width * scale;
+    const dh = engine.height * scale;
+    const ox = offX + (engine.shakeX || 0) * scale;
+    const oy = offY + (engine.shakeY || 0) * scale;
+
+    // Draw buffers at an explicit destination size so bilinear smoothing actually runs
+    // (some browsers nearest-neighbor when scale is only in the transform).
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = gfxQuality >= 1 ? 'high' : 'low';
+
+    if (gfxQuality >= 1) {
+      ctx.filter = 'blur(' + Math.max(0.6, scale * 0.5).toFixed(2) + 'px)';
+      ctx.drawImage(offCanvas, ox, oy, dw, dh);
+      ctx.filter = 'none';
+      ctx.globalAlpha = 0.58;
+      ctx.drawImage(offCanvas, ox, oy, dw, dh);
+      ctx.globalAlpha = 1;
+    } else {
+      ctx.drawImage(offCanvas, ox, oy, dw, dh);
+    }
+
+    // Liquids: blur in screen pixels (~one cell) for a metaball / contour look
+    if (gfxQuality >= 2) {
+      ctx.filter = 'blur(' + Math.max(1.8, scale * 1.55).toFixed(2) + 'px)';
+      ctx.globalAlpha = 0.95;
+      ctx.drawImage(fluidCanvas, ox, oy, dw, dh);
+      ctx.filter = 'none';
+      ctx.globalAlpha = 0.28;
+      ctx.drawImage(fluidCanvas, ox, oy, dw, dh);
+      ctx.globalAlpha = 1;
+    } else if (gfxQuality >= 1) {
+      ctx.filter = 'blur(' + Math.max(1.1, scale * 1.0).toFixed(2) + 'px)';
+      ctx.drawImage(fluidCanvas, ox, oy, dw, dh);
+      ctx.filter = 'none';
+    } else {
+      ctx.drawImage(fluidCanvas, ox, oy, dw, dh);
+    }
+
+    // World-space pass for sprites, characters, tools
     ctx.translate(offX, offY);
     ctx.scale(scale, scale);
     ctx.translate(engine.shakeX || 0, engine.shakeY || 0);
 
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(offCanvas, 0, 0);
+    // Soft glowing gas sprites (fire, smoke, steam, sparks, embers)
+    const gCount = engine.gasCount;
+    if (gCount) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (let gi = 0; gi < gCount; gi++) {
+        const t = engine.gasT[gi];
+        const spr = gasSprite[t];
+        if (!spr) continue;
+        const life = engine.gasL[gi];
+        const maxL = t === EL.FIRE ? 32 : (t === EL.SPARK ? 14 : (t === EL.EMBER ? 40 : 80));
+        const a = Math.max(0.15, Math.min(1, life / maxL));
+        const sz = gasSize[t] * (0.75 + a * 0.5);
+        ctx.globalAlpha = a;
+        ctx.drawImage(spr, engine.gasX[gi] + 0.5 - sz, engine.gasY[gi] + 0.5 - sz, sz * 2, sz * 2);
+      }
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
 
-    // Soft bloom for fire, lava, sparks and embers
+    // Extra lava bloom
     const glows = engine.glows;
-    if (glows && glows.length) {
+    if (glows && glows.length && gfxQuality >= 1) {
       const W = engine.width;
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       for (let g = 0; g < glows.length; g++) {
         const idx = glows[g];
-        const t = engine.type[idx];
         const gx = (idx % W) + 0.5;
         const gy = ((idx / W) | 0) + 0.5;
-        if (t === EL.SPARK) ctx.fillStyle = 'rgba(140, 240, 255, 0.42)';
-        else if (t === EL.LAVA) ctx.fillStyle = 'rgba(255, 90, 20, 0.36)';
-        else if (t === EL.EMBER) ctx.fillStyle = 'rgba(255, 110, 30, 0.32)';
-        else ctx.fillStyle = 'rgba(255, 150, 40, 0.30)';
-        const rad = t === EL.LAVA ? 3.8 : (t === EL.SPARK ? 3.4 : 3.0);
+        ctx.fillStyle = 'rgba(255, 110, 30, 0.28)';
         ctx.beginPath();
-        ctx.arc(gx, gy, rad, 0, Math.PI * 2);
+        ctx.arc(gx, gy, 4.2, 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.restore();
@@ -1299,6 +1405,100 @@
     ctx.restore();
   }
 
+  function strokeIcon(ctx, name, x, y, s) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(s / 24, s / 24);
+    ctx.translate(-12, -12);
+    ctx.lineWidth = 1.8;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = ctx.strokeStyle || '#fff';
+    ctx.beginPath();
+    switch (name) {
+      case 'grab':
+        ctx.moveTo(8, 11); ctx.lineTo(8, 6.5);
+        ctx.moveTo(11, 11); ctx.lineTo(11, 5.5);
+        ctx.moveTo(14, 11); ctx.lineTo(14, 7.5);
+        ctx.moveTo(7.5, 13); ctx.bezierCurveTo(7.5, 17, 9.5, 20, 12, 20.5);
+        ctx.bezierCurveTo(14.5, 20, 16.5, 17, 16.5, 13);
+        break;
+      case 'minigun':
+        ctx.arc(12, 12, 3.2, 0, Math.PI * 2);
+        ctx.moveTo(12, 3.5); ctx.lineTo(12, 6.5);
+        ctx.moveTo(12, 17.5); ctx.lineTo(12, 20.5);
+        ctx.moveTo(3.5, 12); ctx.lineTo(6.5, 12);
+        ctx.moveTo(17.5, 12); ctx.lineTo(20.5, 12);
+        break;
+      case 'rpg':
+        ctx.moveTo(15, 9); ctx.lineTo(19.5, 7.5); ctx.lineTo(18, 12); ctx.lineTo(9, 21); ctx.lineTo(6, 18); ctx.closePath();
+        break;
+      case 'bomb':
+        ctx.arc(11, 14, 6, 0, Math.PI * 2);
+        ctx.moveTo(14.5, 8.5); ctx.lineTo(16.5, 6);
+        break;
+      case 'firework':
+        ctx.moveTo(12, 12); ctx.lineTo(12, 4);
+        ctx.moveTo(12, 12); ctx.lineTo(16, 6);
+        ctx.moveTo(12, 12); ctx.lineTo(8, 6);
+        ctx.moveTo(12, 12); ctx.lineTo(18, 11);
+        ctx.moveTo(12, 12); ctx.lineTo(6, 11);
+        break;
+      case 'tornado':
+        ctx.moveTo(5, 5.5); ctx.lineTo(19, 5.5);
+        ctx.moveTo(6.5, 9); ctx.lineTo(17.5, 9);
+        ctx.moveTo(8, 12.5); ctx.lineTo(16, 12.5);
+        ctx.moveTo(9.5, 16); ctx.lineTo(14.5, 16);
+        ctx.moveTo(10.5, 19.5); ctx.lineTo(13.5, 19.5);
+        break;
+      case 'tsunami':
+        ctx.moveTo(3, 16); ctx.bezierCurveTo(8, 10, 12, 12, 16, 12); ctx.bezierCurveTo(18, 12, 20, 9, 21, 12);
+        break;
+      case 'meteor':
+        ctx.arc(15, 15, 5, 0, Math.PI * 2);
+        ctx.moveTo(11.5, 11.5); ctx.lineTo(5, 5);
+        ctx.moveTo(10, 14); ctx.lineTo(5.5, 9.5);
+        break;
+      case 'lightning':
+        ctx.moveTo(13, 3); ctx.lineTo(6.5, 13); ctx.lineTo(11.5, 13); ctx.lineTo(10, 21); ctx.lineTo(17.5, 10); ctx.lineTo(12.5, 10); ctx.closePath();
+        break;
+      case 'blackhole':
+        ctx.arc(12, 12, 3, 0, Math.PI * 2);
+        ctx.ellipse(12, 12, 9, 3.2, 0, 0, Math.PI * 2);
+        break;
+      case 'nuke':
+        ctx.arc(12, 12.5, 1.6, 0, Math.PI * 2);
+        ctx.moveTo(12, 11); ctx.bezierCurveTo(12, 7, 14, 5, 17, 4.5);
+        ctx.moveTo(12, 11); ctx.bezierCurveTo(12, 7, 10, 5, 7, 4.5);
+        break;
+      case 'earthquake':
+        ctx.moveTo(3, 14); ctx.lineTo(6, 14); ctx.lineTo(8, 9); ctx.lineTo(10.5, 17); ctx.lineTo(13, 7); ctx.lineTo(15.5, 14); ctx.lineTo(17.5, 11); ctx.lineTo(21, 14);
+        ctx.moveTo(4, 19); ctx.lineTo(20, 19);
+        break;
+      case 'flamethrower':
+        ctx.rect(3, 10, 9, 4);
+        ctx.moveTo(12, 11); ctx.lineTo(14.5, 11);
+        ctx.moveTo(15, 9.5); ctx.quadraticCurveTo(19, 10, 20.5, 13.5);
+        break;
+      case 'eraser':
+        ctx.moveTo(15.5, 5.5); ctx.lineTo(19.5, 9.5); ctx.lineTo(11, 18); ctx.lineTo(7, 18); ctx.lineTo(3.5, 14.5); ctx.closePath();
+        break;
+      case 'walker':
+      case 'jumper':
+      case 'zombie':
+      case 'dummy':
+        ctx.arc(12, 5.5, 2.2, 0, Math.PI * 2);
+        ctx.moveTo(12, 8); ctx.lineTo(12, 13.5);
+        ctx.moveTo(9, 21); ctx.lineTo(12, 13.5); ctx.lineTo(15, 21);
+        ctx.moveTo(7.5, 12.5); ctx.lineTo(16.5, 12.5);
+        break;
+      default:
+        ctx.arc(12, 12, 6, 0, Math.PI * 2);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
   function drawToolPreview(ctx, x, y) {
     const tool = currentTool;
     ctx.save();
@@ -1321,22 +1521,18 @@
         ctx.stroke();
       }
     } else if (tool.kind === 'mob') {
-      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
       ctx.lineWidth = 1.2;
       ctx.setLineDash([2, 2]);
       ctx.beginPath(); ctx.arc(x, y - 6, 9, 0, Math.PI * 2); ctx.stroke();
       ctx.setLineDash([]);
-      ctx.font = 'bold 7px sans-serif';
-      ctx.fillStyle = 'rgba(255,255,255,0.9)';
-      ctx.textAlign = 'center';
-      ctx.fillText(tool.emoji || '+', x, y - 4);
+      strokeIcon(ctx, tool.icon || 'walker', x, y - 6, 12);
     } else if (tool.id === 'grab') {
       ctx.strokeStyle = 'rgba(125, 211, 252, 0.95)';
       ctx.lineWidth = 1.4;
       ctx.beginPath(); ctx.arc(x, y, 14, 0, Math.PI * 2); ctx.stroke();
-      ctx.font = '12px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('🖐️', x, y + 4);
+      ctx.strokeStyle = 'rgba(186, 230, 253, 0.95)';
+      strokeIcon(ctx, 'grab', x, y, 16);
     } else if (tool.id === 'minigun') {
       ctx.strokeStyle = '#fde047';
       ctx.lineWidth = 1.5;
@@ -1348,10 +1544,8 @@
     } else if (tool.id === 'rpg' || tool.id === 'bomb') {
       ctx.strokeStyle = 'rgba(248, 113, 113, 0.95)';
       ctx.lineWidth = 1.3;
-      ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.stroke();
-      ctx.font = '11px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(tool.emoji, x, y + 4);
+      ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.stroke();
+      strokeIcon(ctx, tool.icon, x, y, 14);
     } else if (tool.id === 'meteor') {
       ctx.strokeStyle = '#fb923c';
       ctx.fillStyle = 'rgba(251, 146, 60, 0.12)';
@@ -1360,9 +1554,7 @@
       ctx.setLineDash([3, 3]);
       ctx.beginPath(); ctx.moveTo(x, 2); ctx.lineTo(x, y - 10); ctx.stroke();
       ctx.setLineDash([]);
-      ctx.font = '12px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('☄️', x, y + 4);
+      strokeIcon(ctx, 'meteor', x, y, 14);
     } else if (tool.id === 'lightning') {
       ctx.strokeStyle = '#67e8f9';
       ctx.lineWidth = 1.5;
@@ -1370,9 +1562,7 @@
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, y); ctx.stroke();
       ctx.setLineDash([]);
       ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.stroke();
-      ctx.font = '12px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('⚡', x, y + 4);
+      strokeIcon(ctx, 'lightning', x, y, 14);
     } else if (tool.id === 'blackhole') {
       ctx.fillStyle = 'rgba(15, 6, 28, 0.55)';
       ctx.strokeStyle = 'rgba(196, 181, 253, 0.95)';
@@ -1383,18 +1573,14 @@
       ctx.fillStyle = 'rgba(250, 204, 21, 0.08)';
       ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(x, y, 34, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      ctx.font = '14px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('☢️', x, y + 5);
+      strokeIcon(ctx, 'nuke', x, y, 16);
     } else if (tool.id === 'earthquake') {
       ctx.strokeStyle = '#fbbf24';
       ctx.lineWidth = 1.6;
       ctx.beginPath();
       ctx.moveTo(x - 14, y); ctx.lineTo(x - 7, y - 4); ctx.lineTo(x, y + 3); ctx.lineTo(x + 7, y - 5); ctx.lineTo(x + 14, y);
       ctx.stroke();
-      ctx.font = '12px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('🌍', x, y - 8);
+      strokeIcon(ctx, 'earthquake', x, y - 10, 14);
     } else if (tool.id === 'flamethrower') {
       ctx.strokeStyle = 'rgba(251, 146, 60, 0.95)';
       ctx.fillStyle = 'rgba(251, 146, 60, 0.12)';
@@ -1429,19 +1615,10 @@
       ctx.strokeStyle = '#f472b6';
       ctx.lineWidth = 1.3;
       ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.stroke();
-      ctx.font = '12px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('🎆', x, y + 4);
+      strokeIcon(ctx, 'firework', x, y, 14);
     }
     ctx.restore();
   }
-
-  // Main Simulation Loop
-  let acc = 0;
-  let lastTime = performance.now();
-  let fpsCounter = 0;
-  let fpsLast = lastTime;
-  let fpsDisplay = 60;
 
   function loop(now) {
     const dt = Math.min(50, now - lastTime);
@@ -1475,6 +1652,26 @@
 
     renderFrame();
 
+    // Adaptive graphics: drop the fluid blur / extra glows if a device can't hold 60
+    if (!paused) {
+      if (dt > 24) {
+        slowFrames++;
+        goodFrames = 0;
+        if (slowFrames > 40 && gfxQuality > 0) {
+          gfxQuality--;
+          slowFrames = 0;
+        }
+      } else if (dt < 15) {
+        goodFrames++;
+        slowFrames = Math.max(0, slowFrames - 1);
+        if (goodFrames > 90 && gfxQuality < 2) {
+          gfxQuality++;
+          goodFrames = 0;
+        }
+      }
+    }
+    engine.gfxQuality = gfxQuality;
+
     fpsCounter++;
     if (now - fpsLast >= 500) {
       fpsDisplay = Math.round((fpsCounter * 1000) / (now - fpsLast));
@@ -1489,10 +1686,16 @@
   // Boot
   window.addEventListener('resize', resizeDisplay);
   resizeDisplay();
+  btnPause.replaceChildren(iconEl('pause'));
+  setButtonIcon(btnScenes, 'scenes');
+  btnScenes.classList.add('with-icon');
+  setButtonIcon(btnClear, 'clear');
+  btnClear.classList.add('with-icon');
+  btnCloseScenes.replaceChildren(iconEl('close'));
   populateScenes();
   renderPalette();
   SCENES[0].build();
-  showToast('SandForge V3 — New fighters, visible tools, and a graphics glow-up!');
+  showToast('SandForge V4 — Smooth fluids, vector characters, and a new icon UI.');
   window.SandForgeApp = {
     get engine() { return engine; },
     get currentTool() { return currentTool; },

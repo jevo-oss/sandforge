@@ -23,7 +23,7 @@ html, body {
   overscroll-behavior: none;
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
@@ -101,7 +101,8 @@ button:active {
 }
 
 .icon-btn, .pill-btn {
-  height: 32px;
+  height: 36px;
+  min-height: 36px;
   border-radius: 9px;
   font-size: 13px;
   font-weight: 600;
@@ -112,7 +113,8 @@ button:active {
 }
 
 .icon-btn {
-  width: 34px;
+  width: 36px;
+  min-width: 36px;
   font-size: 14px;
 }
 
@@ -146,8 +148,8 @@ button:active {
   width: 100%;
   height: 100%;
   touch-action: none;
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
+  image-rendering: auto;
+  image-rendering: high-quality;
 }
 
 .toast {
@@ -242,9 +244,10 @@ button:active {
 }
 
 .size-btn {
-  width: 28px;
-  height: 26px;
-  border-radius: 7px;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 8px;
   font-size: 11px;
   font-weight: 700;
   color: var(--muted);
@@ -520,8 +523,9 @@ button:active {
     min-width: 0;
   }
   .cat-tab {
-    padding: 6px 10px;
+    padding: 8px 12px;
     font-size: 12px;
+    min-height: 36px;
   }
   .brush-wrap {
     margin-left: auto;
@@ -539,4 +543,55 @@ button:active {
     font-size: 10px;
     padding: 3px 4px;
   }
+}
+
+.icon-sprite {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+  flex-shrink: 0;
+  stroke: currentColor;
+}
+
+.icon-btn .icon,
+.pill-btn .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.tool-btn .icon {
+  width: 20px;
+  height: 20px;
+}
+
+.active-icon {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  overflow: hidden;
+}
+.active-icon .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.pill-btn.with-icon {
+  gap: 6px;
+}
+
+.btn-pause-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
