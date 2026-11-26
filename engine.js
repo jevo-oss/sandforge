@@ -130,7 +130,7 @@
       this.nextMobId = 1;
       this.grabbed = null;
       this.maxParticles = 2400;
-      this.maxMobs = 65;
+      this.maxMobs = 280;
     }
 
     rand() {
@@ -255,6 +255,7 @@
           const dx = mob.x - cx, dy = (mob.y - 6) - cy;
           if (dx * dx + dy * dy <= er2) {
             this.spawnSplat(mob.x, mob.y - 6, '#9fb0c8', 8);
+            mob.dead = true;
             this.mobs.splice(m, 1);
           }
         }
@@ -318,12 +319,14 @@
     }
 
     spawnMob(type, x, y) {
-      if (this.mobs.length >= this.maxMobs) this.mobs.shift();
+      if (this.mobs.length >= this.maxMobs) return null;
       const clampedX = Math.max(6, Math.min(this.width - 7, x));
       const clampedY = Math.max(14, Math.min(this.height - 4, y));
       const hpMap = { walker: 100, jumper: 95, zombie: 130, dummy: 160 };
       const mob = {
         id: this.nextMobId++,
+        dead: false,
+        huntTarget: null,
         type,
         x: clampedX,
         y: clampedY,
@@ -1958,6 +1961,7 @@
 
     stepMobs() {
       const W = this.width, H = this.height, type = this.type;
+      this.rebuildMobIndex();
       for (let i = this.mobs.length - 1; i >= 0; i--) {
         const m = this.mobs[i];
         if (m.hurtFlash > 0) m.hurtFlash--;
@@ -2034,6 +2038,7 @@
               const splatColors = { walker: '#c45c3a', jumper: '#e23e6e', zombie: '#9f8ab8', dummy: '#eab308' };
               this.spawnSplat(m.x, m.y - 6, splatColors[m.type] || '#f87171', 18, 3.0);
               if (this.grabbed && this.grabbed.ref === m) this.grabbed = null;
+              m.dead = true;
               this.mobs.splice(i, 1);
               continue;
             }
@@ -2131,7 +2136,71 @@
         if (Math.abs(m.vx) > 0.15) m.walkPhase += Math.abs(m.vx) * 0.45;
       }
 
+      this.rebuildMobIndex();
       this.stepCombat();
+    }
+
+    rebuildMobIndex() {
+      const cell = 24;
+      const cols = Math.ceil(this.width / cell) + 1;
+      this.mobHashCell = cell;
+      this.mobHashCols = cols;
+      const map = this.mobHash || (this.mobHash = new Map());
+      map.clear();
+      const preyZ = [];
+      const preyH = [];
+      for (const m of this.mobs) {
+        if (m.dead) continue;
+        const cx = Math.max(0, (m.x / cell) | 0);
+        const cy = Math.max(0, (m.y / cell) | 0);
+        const key = cy * cols + cx;
+        let bucket = map.get(key);
+        if (!bucket) { bucket = []; map.set(key, bucket); }
+        bucket.push(m);
+        if (m.type === 'zombie') preyZ.push(m);
+        else if (m.type === 'walker' || m.type === 'jumper' || m.type === 'dummy') preyH.push(m);
+      }
+      this.preyForHumans = preyZ;
+      this.preyForZombies = preyH;
+    }
+
+    queryMobs(x, y, radius) {
+      const map = this.mobHash;
+      const cell = this.mobHashCell || 24;
+      const cols = this.mobHashCols || 1;
+      if (!map || map.size === 0) return this.mobs;
+      const out = [];
+      const minX = Math.max(0, ((x - radius) / cell) | 0);
+      const maxX = ((x + radius) / cell) | 0;
+      const minY = Math.max(0, ((y - radius) / cell) | 0);
+      const maxY = ((y + radius) / cell) | 0;
+      for (let cy = minY; cy <= maxY; cy++) {
+        for (let cx = minX; cx <= maxX; cx++) {
+          const bucket = map.get(cy * cols + cx);
+          if (!bucket) continue;
+          for (let i = 0; i < bucket.length; i++) out.push(bucket[i]);
+        }
+      }
+      return out;
+    }
+
+    findPrey(m) {
+      const cached = m.huntTarget;
+      if (cached && !cached.dead && this.isPrey(m, cached) && ((this.tick + m.id) & 7) !== 0) {
+        return cached;
+      }
+      const list = m.type === 'zombie' ? (this.preyForZombies || this.mobs) : (this.preyForHumans || this.mobs);
+      const aggro = Math.max(this.width, this.height) + 40;
+      let target = null, bestD2 = aggro * aggro;
+      for (let i = 0; i < list.length; i++) {
+        const other = list[i];
+        if (!this.isPrey(m, other)) continue;
+        const dx = other.x - m.x, dy = other.y - m.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestD2) { bestD2 = d2; target = other; }
+      }
+      m.huntTarget = target;
+      return target;
     }
 
     isHuman(m) { return m.type === 'walker' || m.type === 'jumper'; }
@@ -2207,11 +2276,13 @@
         if (a.type === 'dummy') continue;
 
         let target = null, best = 16 * 16;
-        for (let j = 0; j < mobs.length; j++) {
-          if (i === j) continue;
-          const b = mobs[j];
+        const nearby = this.queryMobs(a.x, a.y, 22);
+        for (let j = 0; j < nearby.length; j++) {
+          const b = nearby[j];
+          if (b === a || b.dead) continue;
           if (!this.isPrey(a, b)) continue;
-          const d2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2;
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const d2 = dx * dx + dy * dy;
           if (d2 < best) { best = d2; target = b; }
         }
         if (!target) continue;
@@ -2265,16 +2336,10 @@
 
       // Hunt / fight-back: ghouls chase scouts, hoppers and dummies; humans fight ghouls
       if (m.type === 'zombie' || this.isHuman(m)) {
-        const aggro = Math.max(this.width, this.height) + 40;
-        let target = null, bestD2 = aggro * aggro;
-        for (const other of this.mobs) {
-          if (!this.isPrey(m, other)) continue;
-          const d2 = (other.x - m.x) ** 2 + (other.y - m.y) ** 2;
-          if (d2 < bestD2) { bestD2 = d2; target = other; }
-        }
+        const target = this.findPrey(m);
         if (target) {
           m.facing = target.x >= m.x ? 1 : -1;
-          const dist = Math.sqrt(bestD2);
+          const dist = Math.hypot(target.x - m.x, target.y - m.y);
           const cap = m.type === 'jumper' ? 1.45 : (m.type === 'zombie' ? 1.15 : 1.15);
           const accel = dist > 13 ? (m.type === 'zombie' ? 0.2 : 0.18) : 0.07;
           m.vx += m.facing * accel;

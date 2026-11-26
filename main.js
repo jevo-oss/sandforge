@@ -2,7 +2,7 @@
   'use strict';
 
   const { SandEngine, EL, EL_META } = window.SandForge;
-  window.SANDFORGE_BUILD = 'SANDFORGE_V5_2';
+  window.SANDFORGE_BUILD = 'SANDFORGE_V5_3';
 
   const TOOLS = {
     tools: [
@@ -582,8 +582,12 @@
   let hoverGrid = null;
 
   // Hold-to-repeat: fire again at a per-tool rate while the pointer stays down.
+  const MOB_SPAWN_PER_SEC = 28;
   const HOLD_INTERVAL = {
-    mob: 130,
+    mob: Math.round(1000 / 28),
+    element: 32,
+    eraser: 32,
+    grab: 90,
     minigun: 33,
     firework: 200,
     bomb: 260,
@@ -605,9 +609,18 @@
 
   function holdKindForTool(tool) {
     if (!tool) return null;
-    if (tool.kind === 'element' || tool.id === 'grab') return null;
+    if (tool.kind === 'element') return tool.id === 'eraser' ? 'eraser' : 'element';
+    if (tool.id === 'grab') return 'grab';
     if (tool.kind === 'mob') return 'mob';
     return HOLD_INTERVAL[tool.id] ? tool.id : null;
+  }
+
+  let lastCapToastAt = 0;
+  function toastMobCap() {
+    const now = performance.now();
+    if (now - lastCapToastAt < 1600) return;
+    lastCapToastAt = now;
+    showToast('Mob cap reached (' + engine.maxMobs + ')');
   }
 
   function holdCanFire(kind) {
@@ -634,9 +647,15 @@
       holdRateEl.textContent = '';
       return;
     }
-    const interval = HOLD_INTERVAL[holdState.kind] || 200;
-    const rate = 1000 / interval;
-    const label = rate >= 4 ? Math.round(rate) + '/s' : rate.toFixed(1).replace(/\.0$/, '') + '/s';
+    const kind = holdState.kind;
+    let label;
+    if (kind === 'mob') label = MOB_SPAWN_PER_SEC + '/s';
+    else if (kind === 'grab' || kind === 'element' || kind === 'eraser') label = 'Hold';
+    else {
+      const interval = HOLD_INTERVAL[kind] || 200;
+      const rate = 1000 / interval;
+      label = rate >= 4 ? Math.round(rate) + '/s' : rate.toFixed(1).replace(/\.0$/, '') + '/s';
+    }
     holdRateEl.textContent = label;
     holdRateEl.classList.remove('hidden');
   }
@@ -668,10 +687,16 @@
     if (!pt) return false;
     if (!holdCanFire(kind)) return false;
     switch (kind) {
-      case 'mob':
-        engine.spawnMob(currentTool.mobType, pt.gx, pt.gy);
+      case 'mob': {
+        const mob = engine.spawnMob(currentTool.mobType, pt.gx, pt.gy);
+        if (!mob) { toastMobCap(); return false; }
         lastMobSpawnPt = pt;
         lastMobSpawnTime = performance.now();
+        break;
+      }
+      case 'element':
+      case 'eraser':
+        engine.paintBrush(Math.round(pt.gx), Math.round(pt.gy), brushSize, currentTool.el, false);
         break;
       case 'firework':
         engine.spawnFirework(pt.gx, pt.gy);
@@ -726,20 +751,83 @@
     return true;
   }
 
+  function spawnMobBurst(pt, count) {
+    if (!pt || !currentTool || !currentTool.mobType) return 0;
+    let n = 0;
+    const seed = holdState ? holdState.count : 0;
+    for (let i = 0; i < count; i++) {
+      if (engine.mobs.length >= engine.maxMobs) {
+        toastMobCap();
+        break;
+      }
+      const ang = (seed * 1.763 + i * 2.399 + engine.tick * 0.17) % (Math.PI * 2);
+      const rad = 3 + ((seed + i * 3) % 10);
+      const mob = engine.spawnMob(currentTool.mobType, pt.gx + Math.cos(ang) * rad, pt.gy + Math.sin(ang) * rad);
+      if (mob) n++;
+    }
+    return n;
+  }
+
+  function tryHoldGrab(pt) {
+    if (!pt) return;
+    if (engine.grabbed && engine.grabbed.ref && !engine.grabbed.ref.dead) {
+      engine.moveGrab(pt.gx, pt.gy);
+      return;
+    }
+    const got = engine.startGrab(pt.gx, pt.gy, 110);
+    if (got) {
+      gestureMode = 'grab';
+      if (holdState) holdState.count++;
+    } else {
+      engine.scoopParticles(pt.gx, pt.gy, holdVel.x, holdVel.y, Math.max(10, brushSize + 6));
+      gestureMode = 'scoop';
+    }
+  }
+
   function tickHoldRepeat(now) {
     if (!holdState) return;
     const kind = holdState.kind;
+    const pt = holdLastPt || lastGridPt || aimCurrent;
+
+    if (kind === 'mob') {
+      const elapsed = now - holdState.lastFire;
+      const due = Math.min(8, Math.floor(elapsed * MOB_SPAWN_PER_SEC / 1000));
+      if (due >= 1) {
+        const spawned = spawnMobBurst(pt, due);
+        if (spawned > 0) {
+          holdState.lastFire += spawned * (1000 / MOB_SPAWN_PER_SEC);
+          holdState.count += spawned;
+        }
+      }
+      updateHoldRateChip();
+      return;
+    }
+
+    if (kind === 'minigun' || kind === 'flamethrower') {
+      updateHoldRateChip();
+      return;
+    }
+
     const interval = HOLD_INTERVAL[kind];
-    if (!interval || kind === 'minigun' || kind === 'flamethrower') {
+    if (!interval) {
       updateHoldRateChip();
       return;
     }
     if (now - holdState.lastFire < interval) return;
-    const pt = holdLastPt || lastGridPt || aimCurrent;
+
+    if (kind === 'grab') {
+      tryHoldGrab(pt);
+      holdState.lastFire = now;
+      updateHoldRateChip();
+      return;
+    }
+
     if (fireHoldTool(kind, pt)) {
       holdState.lastFire = now;
       holdState.count++;
       updateHoldRateChip();
+    } else if (kind === 'mob') {
+      toastMobCap();
     }
   }
 
@@ -838,19 +926,26 @@
       gestureMode = 'draw';
       lastGridPt = pt;
       engine.paintBrush(Math.round(pt.gx), Math.round(pt.gy), brushSize, currentTool.el, false);
+      startHold(currentTool.id === 'eraser' ? 'eraser' : 'element', e.pointerId, pt);
     } else if (currentTool.kind === 'mob') {
       gestureMode = 'mob';
-      engine.spawnMob(currentTool.mobType, pt.gx, pt.gy);
+      const first = engine.spawnMob(currentTool.mobType, pt.gx, pt.gy);
       lastMobSpawnPt = pt;
       lastMobSpawnTime = performance.now();
       startHold('mob', e.pointerId, pt);
+      if (!first) holdState && (holdState.count = 0);
     } else if (currentTool.id === 'grab') {
       gestureMode = 'grab';
-      const grabbed = engine.startGrab(pt.gx, pt.gy, isTouch ? 20 : 14);
       lastGridPt = pt;
+      // Tight grab first so a precise tap still scoops sand; if nothing is under
+      // the pointer, reach farther so a hold on empty space can snag the next mob.
+      let grabbed = engine.startGrab(pt.gx, pt.gy, isTouch ? 22 : 16);
+      if (!grabbed) grabbed = engine.startGrab(pt.gx, pt.gy, 110);
       if (!grabbed) {
         gestureMode = 'scoop';
+        engine.scoopParticles(pt.gx, pt.gy, 0, -0.4, Math.max(10, brushSize + 6));
       }
+      startHold('grab', e.pointerId, pt);
     } else if (currentTool.id === 'bomb') {
       gestureMode = 'aim_bomb';
       aimStart = pt;
@@ -914,7 +1009,7 @@
     if (currentTool.kind !== 'element' || currentTool.id === 'eraser') {
       pulseChip();
       const useHints = {
-        grab: 'Grab & throw — drag a mob or scoop sand!',
+        grab: 'Grab — hold to keep grabbing nearby mobs, drag to throw',
         minigun: 'Minigun — hold to fire!',
         rpg: 'RPG — hold to launch, drag to aim',
         bomb: 'Bomb — hold to drop more, drag to throw',
@@ -927,13 +1022,14 @@
         nuke: 'Nuke — hold for another launch',
         earthquake: 'Earthquake — hold to keep shaking',
         flamethrower: 'Flamethrower — drag to spray fire',
-        eraser: 'Erasing',
-        mob_walker: 'Scout — hold to keep spawning',
-        mob_jumper: 'Hopper — hold to keep spawning',
-        mob_zombie: 'Ghoul — hold to keep spawning',
-        mob_dummy: 'Dummy — hold to keep spawning',
+        eraser: 'Eraser — hold to keep erasing',
+        mob_walker: 'Scout — hold to flood-spawn',
+        mob_jumper: 'Hopper — hold to flood-spawn',
+        mob_zombie: 'Ghoul — hold to flood-spawn',
+        mob_dummy: 'Dummy — hold to flood-spawn',
       };
       if (useHints[currentTool.id]) showToast(useHints[currentTool.id]);
+      if (currentTool.kind === 'mob' && engine.mobs.length >= engine.maxMobs) toastMobCap();
     }
   });
 
@@ -1098,7 +1194,74 @@
     },
   };
 
-  function drawStickMob(ctx, m) {
+  function drawMobLod0(ctx, m) {
+    const pal = MOB_PAL[m.type] || MOB_PAL.walker;
+    ctx.save();
+    ctx.translate(m.x, m.y - 6);
+    ctx.rotate(m.angle || 0);
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.beginPath(); ctx.ellipse(0, 7.2, 3.4, 1.0, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = pal.pants || pal.shirt;
+    ctx.beginPath(); ctx.ellipse(0, 2.2, 2.4, 3.4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = pal.vest || pal.shirt;
+    ctx.beginPath(); ctx.ellipse(0, -1.2, 2.6, 3.0, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = pal.skin;
+    ctx.beginPath(); ctx.arc(0, -6.2, 2.4, 0, Math.PI * 2); ctx.fill();
+    if (m.hurtFlash > 0) {
+      ctx.fillStyle = 'rgba(255,70,70,0.35)';
+      ctx.beginPath(); ctx.arc(0, -2, 6, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+    if (m.hp < m.maxHp * 0.8 || m.combatTimer > 0) {
+      const pct = Math.max(0, m.hp / m.maxHp);
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(m.x - 5, m.y - 18, 10, 1.8);
+      ctx.fillStyle = pct > 0.5 ? '#4ade80' : (pct > 0.25 ? '#facc15' : '#f43f5e');
+      ctx.fillRect(m.x - 5, m.y - 18, 10 * pct, 1.8);
+    }
+  }
+
+  function drawMobLod1(ctx, m) {
+    const pal = MOB_PAL[m.type] || MOB_PAL.walker;
+    const face = m.facing >= 0 ? 1 : -1;
+    const phase = m.walkPhase || 0;
+    const swing = Math.sin(phase) * 2.2;
+    ctx.save();
+    ctx.translate(m.x, m.y - 6);
+    ctx.rotate(m.angle || 0);
+    ctx.scale(face * 1.1, 1.1);
+    ctx.fillStyle = 'rgba(0,0,0,0.24)';
+    ctx.beginPath(); ctx.ellipse(0, 6.8, 4.0, 1.05, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = pal.pants;
+    ctx.lineCap = 'round';
+    ctx.lineWidth = 1.8;
+    ctx.beginPath(); ctx.moveTo(-1.2, 1.4); ctx.lineTo(-1.2 + swing, 6.4); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(1.2, 1.4); ctx.lineTo(1.2 - swing, 6.4); ctx.stroke();
+    ctx.fillStyle = pal.shirt;
+    ctx.beginPath(); ctx.roundRect(-2.2, -4.4, 4.4, 5.6, 1.2); ctx.fill();
+    ctx.strokeStyle = pal.shirt;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(-2.0, -3.2); ctx.lineTo(-2.0 - swing * 0.4, 1.2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(2.0, -3.2); ctx.lineTo(2.0 + swing * 0.4, 1.2); ctx.stroke();
+    ctx.fillStyle = pal.skin;
+    ctx.beginPath(); ctx.arc(0, -6.6, 2.7, 0, Math.PI * 2); ctx.fill();
+    if (m.hurtFlash > 0) {
+      ctx.fillStyle = 'rgba(255,70,70,0.32)';
+      ctx.beginPath(); ctx.arc(0, -2, 7, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+    if (m.hp < m.maxHp || m.combatTimer > 0 || m.dying > 0) {
+      const pct = Math.max(0, m.hp / m.maxHp);
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillRect(m.x - 6, m.y - 20, 12, 2);
+      ctx.fillStyle = pct > 0.5 ? '#4ade80' : (pct > 0.25 ? '#facc15' : '#f43f5e');
+      ctx.fillRect(m.x - 6, m.y - 20, 12 * pct, 2);
+    }
+  }
+
+  function drawStickMob(ctx, m, lod) {
+    if (lod <= 0) { drawMobLod0(ctx, m); return; }
+    if (lod === 1) { drawMobLod1(ctx, m); return; }
     const pal = MOB_PAL[m.type] || MOB_PAL.walker;
     const flail = (m.state === 'ragdoll' || m.state === 'grabbed' || m.burnTimer > 0 || m.dying > 0);
     const attacking = m.attackTimer > 0 && !flail;
@@ -1883,9 +2046,11 @@
       ctx.restore();
     }
 
-    // Draw Mobs
+    // Draw Mobs (LOD drops detail when the crowd is large)
+    const mobCount = engine.mobs.length;
+    const mobLod = mobCount > 140 || gfxQuality === 0 ? 0 : (mobCount > 55 || gfxQuality === 1 ? 1 : 2);
     for (const m of engine.mobs) {
-      drawStickMob(ctx, m);
+      drawStickMob(ctx, m, mobLod);
     }
 
     // Explosions: heat glow + double shockwave rings
@@ -2260,7 +2425,7 @@
   populateScenes();
   renderPalette();
   SCENES[0].build();
-  showToast('SandForge V5.2 — Hold to spam.');
+  showToast('SandForge V5.3 — Faster mob spawn.');
   function selectToolById(id) {
     for (const [cat, list] of Object.entries(TOOLS)) {
       const item = list.find((x) => x.id === id);
@@ -2280,6 +2445,23 @@
     get currentCat() { return currentCat; },
     get holdActive() { return !!holdState; },
     get holdCount() { return holdState ? holdState.count : 0; },
+    get fps() { return fpsDisplay; },
+    gridToClient(gx, gy) {
+      const { scale, offX, offY } = getBaseTransform();
+      const cx = gx * scale + offX;
+      const cy = gy * scale + offY;
+      const sx = (cx - viewW * 0.5) * cam.zoom + viewW * 0.5 + cam.panX;
+      const sy = (cy - viewH * 0.5) * cam.zoom + viewH * 0.5 + cam.panY;
+      const rect = canvas.getBoundingClientRect();
+      return { x: rect.left + sx, y: rect.top + sy };
+    },
+    get allTools() {
+      const out = [];
+      for (const [cat, list] of Object.entries(TOOLS)) {
+        for (const item of list) out.push({ id: item.id, name: item.name, kind: item.kind, cat });
+      }
+      return out;
+    },
     selectTool: selectToolById,
   };
   requestAnimationFrame(loop);
