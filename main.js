@@ -2,7 +2,7 @@
   'use strict';
 
   const { SandEngine, EL, EL_META } = window.SandForge;
-  window.SANDFORGE_BUILD = 'SANDFORGE_V5_3';
+  window.SANDFORGE_BUILD = 'SANDFORGE_V5_4';
 
   const TOOLS = {
     tools: [
@@ -229,6 +229,49 @@
   let currentCat = 'tools';
   let currentTool = TOOLS.tools[0];
   let brushSize = 5;
+  const SIZE_LABELS = { 2: 'S', 5: 'M', 10: 'L', 18: 'XL' };
+  const sizeBadgeEl = document.getElementById('size-badge');
+  function sizeMul() { return brushSize / 5; }
+  function sizeLabel() { return SIZE_LABELS[brushSize] || 'M'; }
+  function scoopRadius() { return Math.max(4, Math.round(4 + brushSize * 1.4)); }
+  function tightGrabRadius(isTouch) { return Math.max(8, Math.round((isTouch ? 22 : 16) * sizeMul())); }
+  function seekGrabRadius() { return Math.max(16, Math.round(40 + 70 * sizeMul())); }
+  function effectPreviewRadius() {
+    const sc = sizeMul();
+    const tool = currentTool;
+    if (!tool) return brushSize;
+    if (tool.kind === 'element') return brushSize;
+    if (tool.kind === 'mob') return Math.max(8, 9 * sc);
+    switch (tool.id) {
+      case 'grab': return tightGrabRadius(false);
+      case 'bomb': return 17 * sc;
+      case 'rpg': return 21 * sc;
+      case 'nuke': return 34 * sc;
+      case 'meteor': return 16 * sc;
+      case 'blackhole': return 28 * sc;
+      case 'tornado': return 34 * sc;
+      case 'lightning': return Math.max(6, 8 * sc);
+      case 'flamethrower': return 16 * sc;
+      case 'minigun': return 8 * sc;
+      case 'tsunami': return 22 * sc;
+      case 'earthquake': return 18 * sc;
+      case 'firework': return 12 * sc;
+      default: return Math.max(8, brushSize);
+    }
+  }
+  function updateSizeBadge() {
+    if (sizeBadgeEl) sizeBadgeEl.textContent = sizeLabel();
+    if (!brushWrapEl) return;
+    brushWrapEl.querySelectorAll('.size-btn').forEach((b) => {
+      const on = parseInt(b.dataset.size, 10) === brushSize;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+  function applyBrushSize(size) {
+    brushSize = SIZE_LABELS[size] ? size : (parseInt(size, 10) || 5);
+    updateSizeBadge();
+  }
   let paused = false;
   let speedMul = 1;
   let toastTimer = null;
@@ -339,12 +382,21 @@
     renderPalette();
   });
 
-  brushWrapEl.addEventListener('click', (e) => {
+  let lastSizeTapAt = 0;
+  function onSizeButton(e) {
     const btn = e.target.closest('.size-btn');
-    if (!btn) return;
-    brushSize = parseInt(btn.dataset.size, 10) || 5;
-    brushWrapEl.querySelectorAll('.size-btn').forEach((b) => b.classList.toggle('active', b === btn));
-  });
+    if (!btn || !brushWrapEl.contains(btn)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const next = parseInt(btn.dataset.size, 10) || 5;
+    const now = performance.now();
+    if (now - lastSizeTapAt < 220 && next === brushSize) return;
+    lastSizeTapAt = now;
+    applyBrushSize(next);
+    showToast('Size ' + sizeLabel());
+  }
+  brushWrapEl.addEventListener('pointerdown', onSizeButton);
+  brushWrapEl.addEventListener('click', onSizeButton);
 
   paletteEl.addEventListener('scroll', updatePaletteFades, { passive: true });
 
@@ -615,17 +667,9 @@
     return HOLD_INTERVAL[tool.id] ? tool.id : null;
   }
 
-  let lastCapToastAt = 0;
-  function toastMobCap() {
-    const now = performance.now();
-    if (now - lastCapToastAt < 1600) return;
-    lastCapToastAt = now;
-    showToast('Mob cap reached (' + engine.maxMobs + ')');
-  }
-
   function holdCanFire(kind) {
     switch (kind) {
-      case 'mob': return engine.mobs.length < engine.maxMobs;
+      case 'mob': return true;
       case 'firework': return engine.fireworks.length < 24;
       case 'bomb': return engine.bombs.length < 28;
       case 'rpg': return engine.rockets.length < 14;
@@ -649,7 +693,7 @@
     }
     const kind = holdState.kind;
     let label;
-    if (kind === 'mob') label = MOB_SPAWN_PER_SEC + '/s';
+    if (kind === 'mob') label = Math.round(MOB_SPAWN_PER_SEC * sizeMul()) + '/s';
     else if (kind === 'grab' || kind === 'element' || kind === 'eraser') label = 'Hold';
     else {
       const interval = HOLD_INTERVAL[kind] || 200;
@@ -688,8 +732,8 @@
     if (!holdCanFire(kind)) return false;
     switch (kind) {
       case 'mob': {
-        const mob = engine.spawnMob(currentTool.mobType, pt.gx, pt.gy);
-        if (!mob) { toastMobCap(); return false; }
+        const mob = engine.spawnMob(currentTool.mobType, pt.gx, pt.gy, sizeMul());
+        if (!mob) return false;
         lastMobSpawnPt = pt;
         lastMobSpawnTime = performance.now();
         break;
@@ -699,51 +743,51 @@
         engine.paintBrush(Math.round(pt.gx), Math.round(pt.gy), brushSize, currentTool.el, false);
         break;
       case 'firework':
-        engine.spawnFirework(pt.gx, pt.gy);
+        engine.spawnFirework(pt.gx, pt.gy, sizeMul());
         break;
       case 'bomb': {
         const vx = Math.max(-8, Math.min(8, holdVel.x * 0.28));
         const vy = Math.max(-8, Math.min(8, holdVel.y * 0.28));
-        engine.spawnBomb(pt.gx, pt.gy, vx, vy);
+        engine.spawnBomb(pt.gx, pt.gy, vx, vy, sizeMul());
         break;
       }
       case 'rpg': {
         const dist = Math.hypot(holdVel.x, holdVel.y);
         if (dist > 8) {
-          engine.fireRocket(pt.gx - holdVel.x, pt.gy - holdVel.y, pt.gx, pt.gy);
+          engine.fireRocket(pt.gx - holdVel.x, pt.gy - holdVel.y, pt.gx, pt.gy, sizeMul());
         } else {
           const ox = pt.gx < engine.width * 0.5 ? engine.width * 0.85 : engine.width * 0.15;
-          engine.fireRocket(ox, 10, pt.gx, pt.gy);
+          engine.fireRocket(ox, 10, pt.gx, pt.gy, sizeMul());
         }
         break;
       }
       case 'tornado':
         if (activeTornado) activeTornado.controlled = false;
-        activeTornado = engine.spawnTornado(pt.gx, pt.gy, 150);
+        activeTornado = engine.spawnTornado(pt.gx, pt.gy, 150, sizeMul());
         activeTornado.controlled = true;
         break;
       case 'tsunami':
-        engine.spawnTsunami(pt.gx < engine.width * 0.5);
+        engine.spawnTsunami(pt.gx < engine.width * 0.5, sizeMul());
         break;
       case 'meteor':
-        engine.spawnMeteor(pt.gx, pt.gy);
+        engine.spawnMeteor(pt.gx, pt.gy, sizeMul());
         break;
       case 'lightning':
-        engine.spawnLightning(pt.gx, pt.gy);
+        engine.spawnLightning(pt.gx, pt.gy, sizeMul());
         break;
       case 'blackhole':
         if (activeBlackHole) {
           activeBlackHole.controlled = false;
           activeBlackHole.life = Math.min(activeBlackHole.life, 70);
         }
-        activeBlackHole = engine.spawnBlackHole(pt.gx, pt.gy, 95);
+        activeBlackHole = engine.spawnBlackHole(pt.gx, pt.gy, 95, sizeMul());
         activeBlackHole.controlled = true;
         break;
       case 'nuke':
-        engine.spawnNuke(pt.gx, pt.gy);
+        engine.spawnNuke(pt.gx, pt.gy, sizeMul());
         break;
       case 'earthquake':
-        engine.spawnEarthquake();
+        engine.spawnEarthquake(58, sizeMul());
         break;
       default:
         return false;
@@ -756,13 +800,9 @@
     let n = 0;
     const seed = holdState ? holdState.count : 0;
     for (let i = 0; i < count; i++) {
-      if (engine.mobs.length >= engine.maxMobs) {
-        toastMobCap();
-        break;
-      }
       const ang = (seed * 1.763 + i * 2.399 + engine.tick * 0.17) % (Math.PI * 2);
-      const rad = 3 + ((seed + i * 3) % 10);
-      const mob = engine.spawnMob(currentTool.mobType, pt.gx + Math.cos(ang) * rad, pt.gy + Math.sin(ang) * rad);
+      const rad = (3 + ((seed + i * 3) % 10)) * sizeMul();
+      const mob = engine.spawnMob(currentTool.mobType, pt.gx + Math.cos(ang) * rad, pt.gy + Math.sin(ang) * rad, sizeMul());
       if (mob) n++;
     }
     return n;
@@ -774,12 +814,12 @@
       engine.moveGrab(pt.gx, pt.gy);
       return;
     }
-    const got = engine.startGrab(pt.gx, pt.gy, 110);
+    const got = engine.startGrab(pt.gx, pt.gy, seekGrabRadius());
     if (got) {
       gestureMode = 'grab';
       if (holdState) holdState.count++;
     } else {
-      engine.scoopParticles(pt.gx, pt.gy, holdVel.x, holdVel.y, Math.max(10, brushSize + 6));
+      engine.scoopParticles(pt.gx, pt.gy, holdVel.x, holdVel.y, scoopRadius());
       gestureMode = 'scoop';
     }
   }
@@ -791,11 +831,12 @@
 
     if (kind === 'mob') {
       const elapsed = now - holdState.lastFire;
-      const due = Math.min(8, Math.floor(elapsed * MOB_SPAWN_PER_SEC / 1000));
+      const rate = MOB_SPAWN_PER_SEC * sizeMul();
+      const due = Math.min(12, Math.floor(elapsed * rate / 1000));
       if (due >= 1) {
         const spawned = spawnMobBurst(pt, due);
         if (spawned > 0) {
-          holdState.lastFire += spawned * (1000 / MOB_SPAWN_PER_SEC);
+          holdState.lastFire += spawned * (1000 / Math.max(1, MOB_SPAWN_PER_SEC * sizeMul()));
           holdState.count += spawned;
         }
       }
@@ -826,8 +867,6 @@
       holdState.lastFire = now;
       holdState.count++;
       updateHoldRateChip();
-    } else if (kind === 'mob') {
-      toastMobCap();
     }
   }
 
@@ -929,21 +968,20 @@
       startHold(currentTool.id === 'eraser' ? 'eraser' : 'element', e.pointerId, pt);
     } else if (currentTool.kind === 'mob') {
       gestureMode = 'mob';
-      const first = engine.spawnMob(currentTool.mobType, pt.gx, pt.gy);
+      engine.spawnMob(currentTool.mobType, pt.gx, pt.gy, sizeMul());
       lastMobSpawnPt = pt;
       lastMobSpawnTime = performance.now();
       startHold('mob', e.pointerId, pt);
-      if (!first) holdState && (holdState.count = 0);
     } else if (currentTool.id === 'grab') {
       gestureMode = 'grab';
       lastGridPt = pt;
       // Tight grab first so a precise tap still scoops sand; if nothing is under
       // the pointer, reach farther so a hold on empty space can snag the next mob.
-      let grabbed = engine.startGrab(pt.gx, pt.gy, isTouch ? 22 : 16);
-      if (!grabbed) grabbed = engine.startGrab(pt.gx, pt.gy, 110);
+      let grabbed = engine.startGrab(pt.gx, pt.gy, tightGrabRadius(isTouch));
+      if (!grabbed) grabbed = engine.startGrab(pt.gx, pt.gy, seekGrabRadius());
       if (!grabbed) {
         gestureMode = 'scoop';
-        engine.scoopParticles(pt.gx, pt.gy, 0, -0.4, Math.max(10, brushSize + 6));
+        engine.scoopParticles(pt.gx, pt.gy, 0, -0.4, scoopRadius());
       }
       startHold('grab', e.pointerId, pt);
     } else if (currentTool.id === 'bomb') {
@@ -966,43 +1004,43 @@
       startHold('minigun', e.pointerId, pt);
     } else if (currentTool.id === 'firework') {
       gestureMode = 'firework';
-      engine.spawnFirework(pt.gx, pt.gy);
+      engine.spawnFirework(pt.gx, pt.gy, sizeMul());
       startHold('firework', e.pointerId, pt);
     } else if (currentTool.id === 'tornado') {
       gestureMode = 'tornado';
-      activeTornado = engine.spawnTornado(pt.gx, pt.gy, 150);
+      activeTornado = engine.spawnTornado(pt.gx, pt.gy, 150, sizeMul());
       activeTornado.controlled = true;
       startHold('tornado', e.pointerId, pt);
     } else if (currentTool.id === 'tsunami') {
       gestureMode = 'tsunami';
-      engine.spawnTsunami(pt.gx < engine.width * 0.5);
+      engine.spawnTsunami(pt.gx < engine.width * 0.5, sizeMul());
       startHold('tsunami', e.pointerId, pt);
     } else if (currentTool.id === 'meteor') {
       gestureMode = 'meteor';
-      engine.spawnMeteor(pt.gx, pt.gy);
+      engine.spawnMeteor(pt.gx, pt.gy, sizeMul());
       startHold('meteor', e.pointerId, pt);
     } else if (currentTool.id === 'lightning') {
       gestureMode = 'lightning';
-      engine.spawnLightning(pt.gx, pt.gy);
+      engine.spawnLightning(pt.gx, pt.gy, sizeMul());
       startHold('lightning', e.pointerId, pt);
     } else if (currentTool.id === 'blackhole') {
       gestureMode = 'blackhole';
-      activeBlackHole = engine.spawnBlackHole(pt.gx, pt.gy, 95);
+      activeBlackHole = engine.spawnBlackHole(pt.gx, pt.gy, 95, sizeMul());
       activeBlackHole.controlled = true;
       startHold('blackhole', e.pointerId, pt);
     } else if (currentTool.id === 'nuke') {
       gestureMode = 'nuke';
-      engine.spawnNuke(pt.gx, pt.gy);
+      engine.spawnNuke(pt.gx, pt.gy, sizeMul());
       startHold('nuke', e.pointerId, pt);
     } else if (currentTool.id === 'earthquake') {
       gestureMode = 'earthquake';
-      engine.spawnEarthquake();
+      engine.spawnEarthquake(58, sizeMul());
       startHold('earthquake', e.pointerId, pt);
     } else if (currentTool.id === 'flamethrower') {
       gestureMode = 'flamethrower';
       lastGridPt = pt;
       flameDir = { x: 0, y: -1 };
-      engine.sprayFlamethrower(pt.gx, pt.gy, 0, -1);
+      engine.sprayFlamethrower(pt.gx, pt.gy, 0, -1, sizeMul());
       startHold('flamethrower', e.pointerId, pt);
     }
 
@@ -1029,7 +1067,6 @@
         mob_dummy: 'Dummy — hold to flood-spawn',
       };
       if (useHints[currentTool.id]) showToast(useHints[currentTool.id]);
-      if (currentTool.kind === 'mob' && engine.mobs.length >= engine.maxMobs) toastMobCap();
     }
   });
 
@@ -1085,7 +1122,7 @@
     } else if (gestureMode === 'scoop' && lastGridPt) {
       const vx = pt.gx - lastGridPt.gx;
       const vy = pt.gy - lastGridPt.gy;
-      engine.scoopParticles(pt.gx, pt.gy, vx, vy, Math.max(10, brushSize + 6));
+      engine.scoopParticles(pt.gx, pt.gy, vx, vy, scoopRadius());
       lastGridPt = pt;
     } else if (gestureMode === 'aim_bomb' || gestureMode === 'aim_rpg' || gestureMode === 'minigun') {
       aimCurrent = pt;
@@ -1098,7 +1135,7 @@
     } else if (gestureMode === 'flamethrower' && lastGridPt) {
       const dx = pt.gx - lastGridPt.gx, dy = pt.gy - lastGridPt.gy;
       if (dx * dx + dy * dy > 0.16) flameDir = { x: dx, y: dy };
-      engine.sprayFlamethrower(pt.gx, pt.gy, flameDir.x, flameDir.y);
+      engine.sprayFlamethrower(pt.gx, pt.gy, flameDir.x, flameDir.y, sizeMul());
       lastGridPt = pt;
     }
   });
@@ -1194,11 +1231,36 @@
     },
   };
 
+  function drawMobDots(ctx, mobs) {
+    const colors = { walker: '#c45c3a', jumper: '#e23e6e', zombie: '#86efac', dummy: '#eab308' };
+    const types = ['walker', 'jumper', 'zombie', 'dummy'];
+    ctx.save();
+    for (let t = 0; t < types.length; t++) {
+      const type = types[t];
+      ctx.fillStyle = colors[type];
+      ctx.beginPath();
+      let any = false;
+      for (let i = 0; i < mobs.length; i++) {
+        const m = mobs[i];
+        if (m.type !== type) continue;
+        const x = m.x, y = m.y - 6;
+        const r = 1.7 * (m.scale || 1);
+        ctx.moveTo(x + r, y);
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        any = true;
+      }
+      if (any) ctx.fill();
+    }
+    ctx.restore();
+  }
+
   function drawMobLod0(ctx, m) {
     const pal = MOB_PAL[m.type] || MOB_PAL.walker;
     ctx.save();
     ctx.translate(m.x, m.y - 6);
     ctx.rotate(m.angle || 0);
+    const sc0 = m.scale || 1;
+    if (sc0 !== 1) ctx.scale(sc0, sc0);
     ctx.fillStyle = 'rgba(0,0,0,0.22)';
     ctx.beginPath(); ctx.ellipse(0, 7.2, 3.4, 1.0, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = pal.pants || pal.shirt;
@@ -1212,13 +1274,6 @@
       ctx.beginPath(); ctx.arc(0, -2, 6, 0, Math.PI * 2); ctx.fill();
     }
     ctx.restore();
-    if (m.hp < m.maxHp * 0.8 || m.combatTimer > 0) {
-      const pct = Math.max(0, m.hp / m.maxHp);
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillRect(m.x - 5, m.y - 18, 10, 1.8);
-      ctx.fillStyle = pct > 0.5 ? '#4ade80' : (pct > 0.25 ? '#facc15' : '#f43f5e');
-      ctx.fillRect(m.x - 5, m.y - 18, 10 * pct, 1.8);
-    }
   }
 
   function drawMobLod1(ctx, m) {
@@ -1226,10 +1281,11 @@
     const face = m.facing >= 0 ? 1 : -1;
     const phase = m.walkPhase || 0;
     const swing = Math.sin(phase) * 2.2;
+    const sc1 = m.scale || 1;
     ctx.save();
     ctx.translate(m.x, m.y - 6);
     ctx.rotate(m.angle || 0);
-    ctx.scale(face * 1.1, 1.1);
+    ctx.scale(face * 1.1 * sc1, 1.1 * sc1);
     ctx.fillStyle = 'rgba(0,0,0,0.24)';
     ctx.beginPath(); ctx.ellipse(0, 6.8, 4.0, 1.05, 0, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = pal.pants;
@@ -1331,7 +1387,7 @@
     ctx.save();
     ctx.translate(m.x, m.y - 6 + bodyY);
     ctx.rotate(m.angle + (dying * 0.5 * face));
-    ctx.scale(face * 1.16, 1.16);
+    ctx.scale(face * 1.16 * (m.scale || 1), 1.16 * (m.scale || 1));
 
     const outline = pal.outline;
 
@@ -2048,9 +2104,14 @@
 
     // Draw Mobs (LOD drops detail when the crowd is large)
     const mobCount = engine.mobs.length;
-    const mobLod = mobCount > 140 || gfxQuality === 0 ? 0 : (mobCount > 55 || gfxQuality === 1 ? 1 : 2);
-    for (const m of engine.mobs) {
-      drawStickMob(ctx, m, mobLod);
+    const mobLod = (mobCount > 320 || (gfxQuality === 0 && mobCount > 180)) ? -1
+      : (mobCount > 140 || gfxQuality === 0) ? 0
+      : (mobCount > 55 || gfxQuality === 1) ? 1
+      : 2;
+    if (mobLod <= -1) {
+      drawMobDots(ctx, engine.mobs);
+    } else {
+      for (const m of engine.mobs) drawStickMob(ctx, m, mobLod);
     }
 
     // Explosions: heat glow + double shockwave rings
@@ -2230,6 +2291,17 @@
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
 
+    const radius = effectPreviewRadius();
+    ctx.strokeStyle = 'rgba(125, 211, 252, 0.95)';
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.08)';
+    ctx.lineWidth = 1.3;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.setLineDash([]);
+
     if (tool.kind === 'element') {
       ctx.strokeStyle = tool.el === EL.EMPTY ? 'rgba(248, 113, 113, 0.9)' : (tool.color || 'rgba(255,255,255,0.85)');
       ctx.fillStyle = tool.el === EL.EMPTY ? 'rgba(248, 113, 113, 0.08)' : 'rgba(255,255,255,0.06)';
@@ -2361,7 +2433,7 @@
             const ang = (engine.tick * 0.08) % (Math.PI * 2);
             const ox = aimCurrent.gx + Math.cos(ang) * 42;
             const oy = Math.max(4, aimCurrent.gy - 35 + Math.sin(ang) * 14);
-            engine.fireBullet(ox, oy, aimCurrent.gx, aimCurrent.gy);
+            engine.fireBullet(ox, oy, aimCurrent.gx, aimCurrent.gy, 0.14 * sizeMul());
             if (holdState && holdState.kind === 'minigun') {
               holdState.count++;
               holdState.lastFire = performance.now();
@@ -2369,7 +2441,7 @@
           }
         }
         if (gestureMode === 'flamethrower' && lastGridPt) {
-          engine.sprayFlamethrower(lastGridPt.gx, lastGridPt.gy, flameDir.x, flameDir.y);
+          engine.sprayFlamethrower(lastGridPt.gx, lastGridPt.gy, flameDir.x, flameDir.y, sizeMul());
         }
         engine.step();
         acc -= 1;
@@ -2384,17 +2456,19 @@
 
     // Adaptive graphics: drop the fluid blur / extra glows if a device can't hold 60
     if (!paused) {
+      const crowd = engine.mobs.length;
+      const slowNeed = crowd > 400 ? 12 : (crowd > 180 ? 20 : 40);
       if (dt > 24) {
         slowFrames++;
         goodFrames = 0;
-        if (slowFrames > 40 && gfxQuality > 0) {
+        if (slowFrames > slowNeed && gfxQuality > 0) {
           gfxQuality--;
           slowFrames = 0;
         }
       } else if (dt < 15) {
         goodFrames++;
         slowFrames = Math.max(0, slowFrames - 1);
-        if (goodFrames > 90 && gfxQuality < 2) {
+        if (goodFrames > 90 && gfxQuality < 2 && crowd < 220) {
           gfxQuality++;
           goodFrames = 0;
         }
@@ -2423,9 +2497,10 @@
   btnClear.classList.add('with-icon');
   btnCloseScenes.replaceChildren(iconEl('close'));
   populateScenes();
+  updateSizeBadge();
   renderPalette();
   SCENES[0].build();
-  showToast('SandForge V5.3 — Faster mob spawn.');
+  showToast('SandForge V5.4 — No mob cap.');
   function selectToolById(id) {
     for (const [cat, list] of Object.entries(TOOLS)) {
       const item = list.find((x) => x.id === id);
@@ -2446,6 +2521,10 @@
     get holdActive() { return !!holdState; },
     get holdCount() { return holdState ? holdState.count : 0; },
     get fps() { return fpsDisplay; },
+    get brushSize() { return brushSize; },
+    get sizeMul() { return sizeMul(); },
+    get sizeLabel() { return sizeLabel(); },
+    setBrushSize: applyBrushSize,
     gridToClient(gx, gy) {
       const { scale, offX, offY } = getBaseTransform();
       const cx = gx * scale + offX;

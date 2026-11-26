@@ -262,6 +262,20 @@ button:active {
 .size-btn.active {
   color: #07111c;
   background: var(--accent);
+  border-color: #fff;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.55);
+  transform: scale(1.06);
+}
+
+.size-badge {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #07111c;
+  background: #7dd3fc;
+  border-radius: 999px;
+  padding: 1px 6px;
+  flex-shrink: 0;
 }
 
 .palette {

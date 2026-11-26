@@ -130,7 +130,6 @@
       this.nextMobId = 1;
       this.grabbed = null;
       this.maxParticles = 2400;
-      this.maxMobs = 280;
     }
 
     rand() {
@@ -301,12 +300,20 @@
       }
     }
 
-    spawnBomb(x, y, vx = 0, vy = 0) {
+    spawnBomb(x, y, vx = 0, vy = 0, scale = 1) {
       if (this.bombs.length > 40) this.bombs.shift();
-      this.bombs.push({ x, y, vx, vy, radius: 4, fuse: 115, grabbed: false, angle: 0 });
+      const sc = Math.max(0.35, scale);
+      this.bombs.push({
+        x, y, vx, vy,
+        radius: 4 * sc,
+        blastRadius: 17 * sc,
+        blastPower: 13 * sc,
+        scale: sc,
+        fuse: 115, grabbed: false, angle: 0,
+      });
     }
 
-    spawnFirework(x, y) {
+    spawnFirework(x, y, scale = 1) {
       if (this.fireworks.length > 30) this.fireworks.shift();
       const palettes = ['#ff4d6d', '#38bdf8', '#facc15', '#4ade80', '#c084fc', '#fb923c'];
       this.fireworks.push({
@@ -315,11 +322,11 @@
         vy: -3.2 - this.rand() * 1.1,
         life: 36 + this.randInt(24),
         color: palettes[this.randInt(palettes.length)],
+        scale: Math.max(0.35, scale),
       });
     }
 
-    spawnMob(type, x, y) {
-      if (this.mobs.length >= this.maxMobs) return null;
+    spawnMob(type, x, y, scale = 1) {
       const clampedX = Math.max(6, Math.min(this.width - 7, x));
       const clampedY = Math.max(14, Math.min(this.height - 4, y));
       const hpMap = { walker: 100, jumper: 95, zombie: 130, dummy: 160 };
@@ -327,6 +334,7 @@
         id: this.nextMobId++,
         dead: false,
         huntTarget: null,
+        scale: Math.max(0.55, Math.min(2.15, 0.55 + Math.max(0.35, scale) * 0.45)),
         type,
         x: clampedX,
         y: clampedY,
@@ -361,10 +369,10 @@
       return mob;
     }
 
-    fireBullet(originX, originY, targetX, targetY) {
+    fireBullet(originX, originY, targetX, targetY, spreadAmp = 0.14) {
       if (this.bullets.length > 80) this.bullets.shift();
       const dx = targetX - originX, dy = targetY - originY;
-      const spread = (this.rand() - 0.5) * 0.14;
+      const spread = (this.rand() - 0.5) * Math.max(0.02, spreadAmp);
       const ang = Math.atan2(dy, dx) + spread;
       const speed = 7.5;
       this.bullets.push({
@@ -385,32 +393,44 @@
       });
     }
 
-    fireRocket(originX, originY, targetX, targetY) {
+    fireRocket(originX, originY, targetX, targetY, scale = 1) {
       if (this.rockets.length > 16) this.rockets.shift();
+      const sc = Math.max(0.35, scale);
       const ang = Math.atan2(targetY - originY, targetX - originX);
       const speed = 3.8;
       this.rockets.push({
         x: originX, y: originY,
         vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed,
         angle: ang, life: 160,
+        blastRadius: 21 * sc,
+        blastPower: 16 * sc,
+        scale: sc,
       });
     }
 
-    spawnTornado(x, y, life = 150) {
+    spawnTornado(x, y, life = 150, scale = 1) {
       if (this.tornadoes.length > 5) this.tornadoes.shift();
-      const t = { x, y, vx: (this.rand() - 0.5) * 0.6, life, maxLife: life, phase: this.rand() * Math.PI * 2, controlled: false };
+      const sc = Math.max(0.35, scale);
+      const t = {
+        x, y, vx: (this.rand() - 0.5) * 0.6, life, maxLife: life,
+        phase: this.rand() * Math.PI * 2, controlled: false,
+        scale: sc, halfW: 10 * sc, pullR: 62 * sc,
+      };
       this.tornadoes.push(t);
       return t;
     }
 
-    spawnTsunami(fromLeft = true) {
+    spawnTsunami(fromLeft = true, scale = 1) {
       if (this.tsunamis.length > 3) this.tsunamis.shift();
+      const sc = Math.max(0.35, scale);
+      const height = Math.max(16, Math.min(this.height - 6, Math.floor(this.height * 0.48 * sc)));
       this.tsunamis.push({
         x: fromLeft ? -10 : this.width + 10,
         dir: fromLeft ? 1 : -1,
         speed: 2.8,
-        waveWidth: 26,
-        waveHeight: Math.floor(this.height * 0.48),
+        waveWidth: 26 * sc,
+        waveHeight: height,
+        scale: sc,
         life: Math.ceil((this.width + 40) / 2.8),
       });
     }
@@ -431,8 +451,9 @@
       }
     }
 
-    spawnMeteor(targetX, targetY) {
+    spawnMeteor(targetX, targetY, scale = 1) {
       if (this.meteors.length > 8) this.meteors.shift();
+      const sc = Math.max(0.35, scale);
       const tx = Math.max(6, Math.min(this.width - 7, targetX));
       const ty = Math.max(8, Math.min(this.height - 4, targetY));
       const startX = tx + (this.rand() - 0.5) * 28;
@@ -442,12 +463,15 @@
         vx: (tx - startX) * 0.045,
         vy: 3.4 + this.rand() * 0.8,
         tx, ty,
-        radius: 5,
+        radius: 5 * sc,
+        blastRadius: 16 * sc,
+        blastPower: 13 * sc,
+        scale: sc,
         life: 220,
       });
     }
 
-    spawnLightning(targetX, targetY) {
+    spawnLightning(targetX, targetY, scale = 1) {
       if (this.lightnings.length > 6) this.lightnings.shift();
       const tx = Math.max(2, Math.min(this.width - 3, targetX));
       const ty = Math.max(4, Math.min(this.height - 3, targetY));
@@ -458,8 +482,9 @@
         const mid = pts[2 + this.randInt(Math.max(1, pts.length - 4))];
         forks.push(this._jaggedBolt(mid.x, mid.y, mid.x + (this.rand() - 0.5) * 40, Math.min(this.height - 2, mid.y + 18 + this.rand() * 28), 6));
       }
-      this.lightnings.push({ pts, forks, life: 12, maxLife: 12, tx, ty });
-      this._applyLightningEffects(pts, forks, tx, ty);
+      const sc = Math.max(0.35, scale);
+      this.lightnings.push({ pts, forks, life: 12, maxLife: 12, tx, ty, scale: sc, width: Math.max(1, Math.round(1.2 * sc)) });
+      this._applyLightningEffects(pts, forks, tx, ty, sc);
       this.addShake(3.5);
       this.flashes.push({ x: tx, y: ty, radius: 2, maxRadius: 16, life: 7, maxLife: 7 });
     }
@@ -479,9 +504,10 @@
       return pts;
     }
 
-    _applyLightningEffects(pts, forks, tx, ty) {
+    _applyLightningEffects(pts, forks, tx, ty, scale = 1) {
       const W = this.width, H = this.height, type = this.type, life = this.life;
       const hit = new Set();
+      const w = Math.max(1, Math.round(1.2 * Math.max(0.35, scale)));
       const stamp = (seg) => {
         for (let i = 1; i < seg.length; i++) {
           const ax = seg[i - 1].x, ay = seg[i - 1].y, bx = seg[i].x, by = seg[i].y;
@@ -489,8 +515,8 @@
           for (let s = 0; s <= steps; s++) {
             const x = (ax + (bx - ax) * (s / steps)) | 0;
             const y = (ay + (by - ay) * (s / steps)) | 0;
-            for (let dy = -1; dy <= 1; dy++) {
-              for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -w; dy <= w; dy++) {
+              for (let dx = -w; dx <= w; dx++) {
                 const gx = x + dx, gy = y + dy;
                 if (gx < 0 || gx >= W || gy < 0 || gy >= H) continue;
                 const key = gy * W + gx;
@@ -521,14 +547,15 @@
       for (const f of forks) stamp(f);
 
       for (const mob of this.mobs) {
-        let minD2 = 18 * 18;
+        const zapR = 18 * Math.max(0.35, scale);
+        let minD2 = zapR * zapR;
         const all = pts.concat(...forks);
         for (const p of all) {
           const d2 = (p.x - mob.x) ** 2 + (p.y - (mob.y - 6)) ** 2;
           if (d2 < minD2) minD2 = d2;
         }
         const bodyWet = this.inBounds(mob.x | 0, (mob.y - 6) | 0) && isLiquid(type[((mob.y - 6) | 0) * W + (mob.x | 0)]);
-        if (minD2 < 18 * 18 || bodyWet && minD2 < 36 * 36) {
+        if (minD2 < zapR * zapR || bodyWet && minD2 < (zapR * 2) * (zapR * 2)) {
           const dmg = bodyWet ? 55 : 38;
           mob.hp -= dmg;
           mob.shockTimer = 22;
@@ -542,15 +569,18 @@
       }
     }
 
-    spawnBlackHole(x, y, life = 95) {
+    spawnBlackHole(x, y, life = 95, scale = 1) {
       if (this.blackHoles.length > 2) this.blackHoles.shift();
+      const sc = Math.max(0.35, scale);
       const bh = {
         x: Math.max(8, Math.min(this.width - 9, x)),
         y: Math.max(8, Math.min(this.height - 9, y)),
         life,
         maxLife: life,
-        radius: 6,
-        maxRadius: 28,
+        radius: 6 * sc,
+        baseRadius: 6 * sc,
+        maxRadius: 28 * sc,
+        scale: sc,
         phase: this.rand() * Math.PI * 2,
         controlled: false,
       };
@@ -558,23 +588,25 @@
       return bh;
     }
 
-    spawnNuke(x, y) {
+    spawnNuke(x, y, scale = 1) {
       if (this.nukes.length > 1) this.nukes.shift();
+      const sc = Math.max(0.35, scale);
       const cx = Math.max(8, Math.min(this.width - 9, x));
       const cy = Math.max(8, Math.min(this.height - 9, y));
-      this.nukeBlast(cx, cy);
+      this.nukeBlast(cx, cy, sc);
       this.nukes.push({
         x: cx, y: cy,
         life: 90,
         maxLife: 90,
-        stemH: Math.min(cy - 8, 62),
-        capR: 26,
+        stemH: Math.min(cy - 8, 62 * sc),
+        capR: 26 * sc,
+        scale: sc,
       });
     }
 
-    nukeBlast(cx, cy) {
+    nukeBlast(cx, cy, scale = 1) {
       const W = this.width, H = this.height;
-      const r = 34, r2 = r * r, innerR2 = (r * 0.42) * (r * 0.42);
+      const r = Math.max(8, Math.round(34 * Math.max(0.35, scale))), r2 = r * r, innerR2 = (r * 0.42) * (r * 0.42);
       this.addShake(18);
       this.flashes.push({ x: cx, y: cy, radius: 4, maxRadius: r * 2.1, life: 16, maxLife: 16 });
       this.flashes.push({ x: cx, y: cy, radius: 2, maxRadius: r * 3.2, life: 22, maxLife: 22 });
@@ -635,7 +667,7 @@
       const capY = Math.max(4, cy - stemH);
       for (let k = 0; k < 120 && mush > 0; k++) {
         const ang = this.rand() * Math.PI * 2;
-        const rad = this.rand() * 26;
+        const rad = this.rand() * Math.max(8, r * 0.76);
         const xx = (cx + Math.cos(ang) * rad) | 0;
         const yy = (capY + Math.sin(ang) * rad * 0.45) | 0;
         if (this.inBounds(xx, yy) && (this.type[yy * W + xx] === EL.EMPTY || isTransient(this.type[yy * W + xx]))) {
@@ -682,9 +714,10 @@
       }
     }
 
-    spawnEarthquake(duration = 58) {
-      this.quakeLife = Math.max(this.quakeLife, duration);
-      this.addShake(14);
+    spawnEarthquake(duration = 58, scale = 1) {
+      const sc = Math.max(0.35, scale);
+      this.quakeLife = Math.max(this.quakeLife, Math.round(duration * sc));
+      this.addShake(14 * sc);
       for (let k = 0; k < 28; k++) {
         this.spawnParticle({
           x: this.rand() * this.width,
@@ -706,13 +739,17 @@
       }
     }
 
-    sprayFlamethrower(x, y, dirX, dirY) {
+    sprayFlamethrower(x, y, dirX, dirY, scale = 1) {
       let ang = Math.atan2(dirY, dirX);
       if (!isFinite(ang) || (dirX * dirX + dirY * dirY) < 0.16) ang = -Math.PI / 2;
       const W = this.width, H = this.height;
-      for (let i = 0; i < 9; i++) {
-        const a = ang + (this.rand() - 0.5) * 0.55;
-        const d = 2 + this.rand() * 12;
+      const sc = Math.max(0.35, scale);
+      const shots = Math.max(4, Math.round(9 * sc));
+      const cone = 0.55 * Math.sqrt(sc);
+      const reach = 12 * sc;
+      for (let i = 0; i < shots; i++) {
+        const a = ang + (this.rand() - 0.5) * cone;
+        const d = 2 + this.rand() * reach;
         const px = (x + Math.cos(a) * d) | 0;
         const py = (y + Math.sin(a) * d) | 0;
         if (px < 0 || px >= W || py < 0 || py >= H) continue;
@@ -1454,13 +1491,15 @@
         if (m.life <= 0 || hitGround || gx < 1 || gx >= W - 1) {
           const ix = Math.max(6, Math.min(W - 7, m.x));
           const iy = Math.max(6, Math.min(H - 7, Math.max(m.y, 8)));
+          const blastR = m.blastRadius || 16, blastP = m.blastPower || 13, sc = m.scale || 1;
           this.meteors.splice(i, 1);
-          this.explode(ix, iy, 16, 13);
-          this.addShake(9);
+          this.explode(ix, iy, blastR, blastP);
+          this.addShake(9 * sc);
           // Lava + ember splash around the crater (embers dissipate; lava pools)
-          for (let s = 0; s < 16; s++) {
-            const ang = (s / 16) * Math.PI * 2 + this.rand() * 0.2;
-            const rad = 4 + this.rand() * 8;
+          const splashN = Math.max(6, Math.round(16 * sc));
+          for (let s = 0; s < splashN; s++) {
+            const ang = (s / splashN) * Math.PI * 2 + this.rand() * 0.2;
+            const rad = (4 + this.rand() * 8) * sc;
             const sx = (ix + Math.cos(ang) * rad) | 0;
             const sy = (iy + Math.sin(ang) * rad * 0.7) | 0;
             if (!this.inBounds(sx, sy)) continue;
@@ -1494,7 +1533,8 @@
         bh.phase += 0.28;
         const t = 1 - bh.life / bh.maxLife;
         // Grow, then rapidly collapse and fade
-        if (t < 0.72) bh.radius = 6 + (bh.maxRadius - 6) * (t / 0.72);
+        const baseR = bh.baseRadius || 6;
+        if (t < 0.72) bh.radius = baseR + (bh.maxRadius - baseR) * (t / 0.72);
         else bh.radius = bh.maxRadius * Math.max(0.05, 1 - (t - 0.72) / 0.28);
 
         if (bh.life <= 0 || bh.radius < 0.8) {
@@ -1662,14 +1702,15 @@
           }
         }
 
-        const funnelH = Math.min(H * 0.72, 140);
+        const sc = tor.scale || 1;
+        const funnelH = Math.min(H * 0.72, 140 * sc);
         const topY = Math.max(0, tor.y - funnelH);
-        const botY = Math.min(H - 2, tor.y + 16);
+        const botY = Math.min(H - 2, tor.y + 16 * sc);
 
-        for (let k = 0; k < 28; k++) {
+        for (let k = 0; k < Math.max(12, Math.round(28 * sc)); k++) {
           const py = (topY + this.rand() * (botY - topY)) | 0;
           const heightFrac = 1 - (py - topY) / Math.max(1, botY - topY);
-          const halfW = 10 + heightFrac * 24;
+          const halfW = (10 + heightFrac * 24) * sc;
           const px = (tor.x + (this.rand() - 0.5) * 2 * halfW) | 0;
           if (px < 0 || px >= W || py < 0 || py >= H) continue;
           const i = py * W + px, et = this.type[i];
@@ -1699,14 +1740,15 @@
           if (mob.state === 'grabbed') continue;
           const dx = tor.x - mob.x, dy = (tor.y - 25) - mob.y;
           const dist = Math.hypot(dx, dy);
-          if (dist < 62) {
-            const pull = (1 - dist / 62);
+          const pullR = tor.pullR || 62;
+          if (dist < pullR) {
+            const pull = (1 - dist / pullR);
             mob.vx += (dx / (dist || 1)) * pull * 1.1 + Math.sin(tor.phase + mob.id) * 0.65;
             mob.vy -= pull * 1.25;
             mob.state = 'ragdoll';
             mob.ragdollTimer = Math.max(mob.ragdollTimer, 35);
             mob.angVel += (this.rand() - 0.5) * 0.25;
-            if (dist < 14 && this.rand() < 0.12) {
+            if (dist < 14 * sc && this.rand() < 0.12) {
               mob.vx = (this.rand() < 0.5 ? -1 : 1) * (4 + this.rand() * 3);
               mob.vy = -4.5 - this.rand() * 2.5;
             }
@@ -1717,8 +1759,9 @@
           if (bomb.grabbed) continue;
           const dx = tor.x - bomb.x, dy = (tor.y - 20) - bomb.y;
           const dist = Math.hypot(dx, dy);
-          if (dist < 56) {
-            const pull = 1 - dist / 56;
+          const bombR = (tor.pullR || 62) * 0.9;
+          if (dist < bombR) {
+            const pull = 1 - dist / bombR;
             bomb.vx += (dx / (dist || 1)) * pull * 0.9 + Math.cos(tor.phase) * 0.5;
             bomb.vy -= pull * 1.1;
           }
@@ -1736,7 +1779,8 @@
 
         const crestX = w.x | 0;
         const startY = Math.max(2, H - w.waveHeight);
-        for (let dx = -10; dx <= 10; dx++) {
+        const halfW = Math.max(4, Math.round((w.waveWidth || 26) * 0.4));
+        for (let dx = -halfW; dx <= halfW; dx++) {
           const gx = crestX + dx;
           if (gx < 1 || gx >= W - 1) continue;
           for (let gy = startY; gy < H - 1; gy += 2) {
@@ -1757,7 +1801,7 @@
 
         for (const mob of this.mobs) {
           if (mob.state === 'grabbed') continue;
-          if (Math.abs(mob.x - w.x) < 28 && mob.y > startY - 12) {
+          if (Math.abs(mob.x - w.x) < (w.waveWidth || 26) && mob.y > startY - 12) {
             mob.vx += w.dir * 1.35; mob.vy -= 0.75;
             mob.state = 'ragdoll'; mob.ragdollTimer = Math.max(mob.ragdollTimer, 35);
             mob.burnTimer = 0; mob.angVel += w.dir * 0.18;
@@ -1797,7 +1841,7 @@
           const bx = b.x, by = b.y;
           if (this.grabbed && this.grabbed.ref === b) this.grabbed = null;
           this.bombs.splice(i, 1);
-          this.explode(bx, by, 17, 13);
+          this.explode(bx, by, b.blastRadius || 17, b.blastPower || 13);
           continue;
         }
         if (b.grabbed) continue;
@@ -1839,16 +1883,17 @@
         const hitSolid = gx >= 0 && gx < W && gy >= 0 && gy < H && isBlocking(this.type[gy * W + gx]);
 
         if (fw.life <= 0 || fw.y < 10 || hitSolid) {
-          const count = 42;
+          const sc = fw.scale || 1;
+          const count = Math.max(16, Math.round(42 * sc));
           for (let s = 0; s < count; s++) {
             const ang = (s / count) * Math.PI * 2 + (this.rand() - 0.5) * 0.2;
-            const spd = 1.2 + this.rand() * 2.8;
+            const spd = (1.2 + this.rand() * 2.8) * Math.sqrt(sc);
             this.spawnParticle({
               x: fw.x, y: fw.y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
               gravity: 0.055, life: 28 + this.randInt(22), maxLife: 50, color: fw.color, size: 1.8, redeposit: false,
             });
           }
-          this.flashes.push({ x: fw.x, y: fw.y, radius: 1, maxRadius: 14, life: 7, maxLife: 7 });
+          this.flashes.push({ x: fw.x, y: fw.y, radius: 1, maxRadius: 14 * sc, life: 7, maxLife: 7 });
           this.fireworks.splice(i, 1);
         }
       }
@@ -1924,7 +1969,7 @@
         if (boom) {
           const ex = Math.max(4, Math.min(W - 5, r.x)), ey = Math.max(4, Math.min(H - 5, r.y));
           this.rockets.splice(i, 1);
-          this.explode(ex, ey, 21, 16);
+          this.explode(ex, ey, r.blastRadius || 21, r.blastPower || 16);
         }
       }
     }
@@ -2185,20 +2230,28 @@
     }
 
     findPrey(m) {
+      const n = this.mobs.length;
       const cached = m.huntTarget;
-      if (cached && !cached.dead && this.isPrey(m, cached) && ((this.tick + m.id) & 7) !== 0) {
+      const holdMask = n > 500 ? 15 : 7;
+      if (cached && !cached.dead && this.isPrey(m, cached) && ((this.tick + m.id) & holdMask) !== 0) {
         return cached;
       }
-      const list = m.type === 'zombie' ? (this.preyForZombies || this.mobs) : (this.preyForHumans || this.mobs);
       const aggro = Math.max(this.width, this.height) + 40;
       let target = null, bestD2 = aggro * aggro;
-      for (let i = 0; i < list.length; i++) {
-        const other = list[i];
-        if (!this.isPrey(m, other)) continue;
+      const consider = (other) => {
+        if (!this.isPrey(m, other)) return;
         const dx = other.x - m.x, dy = other.y - m.y;
         const d2 = dx * dx + dy * dy;
         if (d2 < bestD2) { bestD2 = d2; target = other; }
+      };
+      if (n > 250) {
+        const nearby = this.queryMobs(m.x, m.y, 96);
+        for (let i = 0; i < nearby.length; i++) consider(nearby[i]);
+        if (target) { m.huntTarget = target; return target; }
+        if (((this.tick + m.id) % 24) !== 0) return cached || null;
       }
+      const list = m.type === 'zombie' ? (this.preyForZombies || this.mobs) : (this.preyForHumans || this.mobs);
+      for (let i = 0; i < list.length; i++) consider(list[i]);
       m.huntTarget = target;
       return target;
     }
@@ -2257,8 +2310,10 @@
       else if (this.isHuman(attacker)) victim.lastHitBy = 'human';
       else victim.lastHitBy = 'env';
 
-      const col = attacker.type === 'zombie' ? '#86efac' : (style === 'stomp' ? '#fde68a' : '#fecaca');
-      this.spawnSplat((attacker.x + victim.x) * 0.5, (attacker.y + victim.y) * 0.5 - 7, col, 5, 1.5);
+      if (this.mobs.length < 280 || this.rand() < 0.22) {
+        const col = attacker.type === 'zombie' ? '#86efac' : (style === 'stomp' ? '#fde68a' : '#fecaca');
+        this.spawnSplat((attacker.x + victim.x) * 0.5, (attacker.y + victim.y) * 0.5 - 7, col, 5, 1.5);
+      }
     }
 
     stepCombat() {
